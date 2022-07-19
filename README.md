@@ -1,6 +1,6 @@
 This README is just a fast *quick start* document. You can find more detailed documentation at [redis.io](https://redis.io).
 
-此README文件只是快速启动稳文档，你可以在[redis.io](https://redis.io)找到更详细的文档。
+此README文件只是快速启动文档，你可以在[redis.io](https://redis.io)找到更详细的文档。
 
 What is Redis?
 --------------
