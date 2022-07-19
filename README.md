@@ -1,64 +1,102 @@
 This README is just a fast *quick start* document. You can find more detailed documentation at [redis.io](https://redis.io).
 
+此README文件只是快速启动稳文档，你可以在[redis.io](https://redis.io)找到更详细的文档。
+
 What is Redis?
 --------------
+什么是redis
 
 Redis is often referred to as a *data structures* server. What this means is that Redis provides access to mutable data structures via a set of commands, which are sent using a *server-client* model with TCP sockets and a simple protocol. So different processes can query and modify the same data structures in a shared way.
 
+Redis通常被称为数据结构服务器。这意味着Redis提供了多种命令集去访问可修改的数据结构，这种命令使用server-client模型通过TCP sockets和简单的协议进行发送。所以不同的进程都可以通过共享的方法查询和修改同样的数据结构。
+
 Data structures implemented into Redis have a few special properties:
 
+Redis 中实现的数据结构有一些特殊的属性：
+
 * Redis cares to store them on disk, even if they are always served and modified into the server memory. This means that Redis is fast, but that it is also non-volatile.
+* 虽然Redis对数据都是基于内存的操作，但是Redis也会把数据存到硬盘上。这意味着Redis是快速的，但同样也是不容易丢失数据的。
 * The implementation of data structures emphasizes memory efficiency, so data structures inside Redis will likely use less memory compared to the same data structure modelled using a high-level programming language.
+* Redis 中实现的数据结构强调内存效率，所以在Redis内的数据结构相比起其他高级语言的相同数据结构模型会使用更少的内存
 * Redis offers a number of features that are natural to find in a database, like replication, tunable levels of durability, clustering, and high availability.
+* Redis提供了许多跟数据库相似的特征，例如可复制、可调整的持久性级别、集群和高可用性。
 
 Another good example is to think of Redis as a more complex version of memcached, where the operations are not just SETs and GETs, but operations that work with complex data types like Lists, Sets, ordered data structures, and so forth.
 
+一个很好的例子就是将Redis看成是一个更复杂的内存缓存，但是它的操作不只是set和get，还能操作一些更复杂的数据类型，像列表，集合，有序的数据结构等等。
+
 If you want to know more, this is a list of selected starting points:
 
+如果您想了解更多，下面是精选过的列表
+
 * Introduction to Redis data types. http://redis.io/topics/data-types-intro
+* 介绍Redis数据类型 http://redis.io/topics/data-types-intro
 * Try Redis directly inside your browser. http://try.redis.io
+* 通过您的浏览器直接使用Redis http://try.redis.io
 * The full list of Redis commands. http://redis.io/commands
+* Redis命令的列表大全 http://redis.io/commands
 * There is much more inside the official Redis documentation. http://redis.io/documentation
+* 还有更多内容在官方Redis文档 http://redis.io/documentation
 
 Building Redis
 --------------
+
+构建Redis
 
 Redis can be compiled and used on Linux, OSX, OpenBSD, NetBSD, FreeBSD.
 We support big endian and little endian architectures, and both 32 bit
 and 64 bit systems.
 
+Redis可以在Linux，OSX，OpenBSD，NetBSD，FreeBSD等平台上进行编译和使用，我们支持大端和小端架构，还有32位和64位操作系统
+
 It may compile on Solaris derived systems (for instance SmartOS) but our
 support for this platform is *best effort* and Redis is not guaranteed to
 work as well as in Linux, OSX, and \*BSD.
 
+它可以在 Solaris 派生系统（例如 SmartOS）上编译，但我们对这个平台的支持是尽力而为的，并且不能保证 Redis 像在 Linux、OSX 和 BSD 中工作得一样好。
+
 It is as simple as:
+
+它编译非常简单：
 
     % make
 
 To build with TLS support, you'll need OpenSSL development libraries (e.g.
 libssl-dev on Debian/Ubuntu) and run:
 
+为了构建的时候添加TLS支持，你可能需要OpenSSL 开发库并运行（例如 Debian/Ubuntu上的libssl-dev）
+
     % make BUILD_TLS=yes
 
 To build with systemd support, you'll need systemd development libraries (such 
 as libsystemd-dev on Debian/Ubuntu or systemd-devel on CentOS) and run:
 
+为了构建的时候添加系统支持，你可能需要系统开发库并运行（例如 Debian/Ubuntu上的libsystemed 或者 CentOS上的Systemed-devel）
+
     % make USE_SYSTEMD=yes
 
 To append a suffix to Redis program names, use:
+
+为了添加后缀到Redis项目名称，可以这样使用：
 
     % make PROG_SUFFIX="-alt"
 
 You can run a 32 bit Redis binary using:
 
+您可以编译出32位Redis二进制文件：
+
     % make 32bit
 
 After building Redis, it is a good idea to test it using:
+
+构建 Redis 后，最好使用以下方法对其进行测试：
 
     % make test
 
 If TLS is built, running the tests with TLS enabled (you will need `tcl-tls`
 installed):
+
+如果构建了 TLS，则在启用 TLS 的情况下运行测试（您将需要安装 `tcl-tls`）：
 
     % ./utils/gen-test-certs.sh
     % ./runtest --tls
@@ -66,40 +104,63 @@ installed):
 
 Fixing build problems with dependencies or cached build options
 ---------
+修复构建的时候出现的依赖或者缓存构建选项问题
 
 Redis has some dependencies which are included in the `deps` directory.
 `make` does not automatically rebuild dependencies even if something in
 the source code of dependencies changes.
 
+Redis有一些依赖放在了`deps`目录，`make`不会自动重新构建依赖，即使有些依赖的源文件发送了改变
+
 When you update the source code with `git pull` or when code inside the
 dependencies tree is modified in any other way, make sure to use the following
 command in order to really clean everything and rebuild from scratch:
 
+当你通过 `git pull` 更新源代码或者依赖树里面的代码已经被其他方式修改了的时候，确保你使用了下面的命令去清理所有东西并重新构建
+
     make distclean
 
 This will clean: jemalloc, lua, hiredis, linenoise.
+
+这会清理：jemalloc, lua, hiredis, linenoise。
 
 Also if you force certain build options like 32bit target, no C compiler
 optimizations (for debugging purposes), and other similar build time options,
 those options are cached indefinitely until you issue a `make distclean`
 command.
 
+当然，如果你强制包含一些构建选项，例如 32位目标，
+不使用C 编译器优化（为了debug）和其他相似的构建时间选项，
+这些选项会被缓存起来直至您使用 `make distclean` 命令
+
 Fixing problems building 32 bit binaries
 ---------
+
+修复构建32位二进制的问题
 
 If after building Redis with a 32 bit target you need to rebuild it
 with a 64 bit target, or the other way around, you need to perform a
 `make distclean` in the root directory of the Redis distribution.
 
+如果在使用 32 位目标构建 Redis 后，您需要重新构建它
+使用 64 位目标，或者相反，您需要执行
+Redis 发行版根目录中的“make distclean”。
+
 In case of build errors when trying to build a 32 bit binary of Redis, try
 the following steps:
 
+以防在尝试构建32位Redis程序的时候出现错误，尝试使用以下步骤
+
 * Install the package libc6-dev-i386 (also try g++-multilib).
+* 安装libc6-dev-i386包 （也可以尝试 g++-multilib）
 * Try using the following command line instead of `make 32bit`:
+  `make CFLAGS="-m32 -march=native" LDFLAGS="-m32"`
+* 尝试使用如下命令代替`make 32bit`: 
   `make CFLAGS="-m32 -march=native" LDFLAGS="-m32"`
 
 Allocator
 ---------
+内存分配器
 
 Selecting a non-default memory allocator when building Redis is done by setting
 the `MALLOC` environment variable. Redis is compiled and linked against libc
@@ -107,26 +168,41 @@ malloc by default, with the exception of jemalloc being the default on Linux
 systems. This default was picked because jemalloc has proven to have fewer
 fragmentation problems than libc malloc.
 
+在构建 Redis 时选择非默认内存分配器是通过设置 `MALLOC` 环境变量来完成的。 
+默认情况下，Redis 是针对 libc malloc 编译和链接的，
+但 jemalloc 是 Linux 系统上的默认设置。 
+之所以选择此默认值，是因为 jemalloc 已被证明比 libc malloc具有更少的内存碎片问题。
+
 To force compiling against libc malloc, use:
+
+要强制针对 libc malloc 进行编译，请使用：
 
     % make MALLOC=libc
 
 To compile against jemalloc on Mac OS X systems, use:
 
+要在 Mac OS X 系统上针对 jemalloc 进行编译，请使用：
+
     % make MALLOC=jemalloc
 
 Verbose build
 -------------
+详细构建
 
 Redis will build with a user-friendly colorized output by default.
 If you want to see a more verbose output, use the following:
+
+默认情况下，Redis 将使用用户友好的彩色输出进行构建。
+如果要查看更详细的输出，请使用以下命令：
 
     % make V=1
 
 Running Redis
 -------------
+运行Redis
 
 To run Redis with the default configuration, just type:
+如果通过默认配置启动Redis，尝试输入
 
     % cd src
     % ./redis-server
@@ -134,11 +210,15 @@ To run Redis with the default configuration, just type:
 If you want to provide your redis.conf, you have to run it using an additional
 parameter (the path of the configuration file):
 
+如果你想要提供您的redis.conf，你需要使用条件参数去运行它（路径是配置文件）
+
     % cd src
     % ./redis-server /path/to/redis.conf
 
 It is possible to alter the Redis configuration by passing parameters directly
 as options using the command line. Examples:
+
+可以通过使用命令行直接将参数作为选项传递来更改 Redis 配置。 例子：
 
     % ./redis-server --port 9999 --replicaof 127.0.0.1 6379
     % ./redis-server /etc/redis/6379.conf --loglevel debug
@@ -146,17 +226,25 @@ as options using the command line. Examples:
 All the options in redis.conf are also supported as options using the command
 line, with exactly the same name.
 
+所有在redis.conf里的选项都支持使用命令行通过相同的名字进行输入
+
 Running Redis with TLS:
 ------------------
+通过TLS运行Redis
 
 Please consult the [TLS.md](TLS.md) file for more information on
 how to use Redis with TLS.
 
+请浏览[TLS.md](TLS.md)获取更多的信息关于如何通过TLS使用Redis
+
 Playing with Redis
 ------------------
+使用Redis
 
 You can use redis-cli to play with Redis. Start a redis-server instance,
 then in another terminal try the following:
+
+你可以使用redis-cli来使用redis，开始一个redis-server实例，如何开启宁一个命令后输入下面命令：
 
     % cd src
     % ./redis-cli
@@ -174,21 +262,32 @@ then in another terminal try the following:
 
 You can find the list of all the available commands at http://redis.io/commands.
 
+你可以在 http://redis.io/commands 找到所有可用的命令列表
+
 Installing Redis
 -----------------
+安装Redis
 
 In order to install Redis binaries into /usr/local/bin, just use:
+
+为了安装redis到/usr/local/bin，可以使用：
 
     % make install
 
 You can use `make PREFIX=/some/other/directory install` if you wish to use a
 different destination.
 
+如果你想使用不同的安装路径，你可以使用`make PREFIX=/some/other/directory install`。
+
 Make install will just install binaries in your system, but will not configure
 init scripts and configuration files in the appropriate place. This is not
 needed if you just want to play a bit with Redis, but if you are installing
 it the proper way for a production system, we have a script that does this
 for Ubuntu and Debian systems:
+
+Make install 只会在您的系统中安装二进制文件，但不会在适当的位置配置初始化脚本和配置文件。
+如果您只是想稍微玩一下 Redis，则不需要这样做，
+但是如果您以正确的方式为生产系统安装它，我们有一个脚本可以为 Ubuntu 和 Debian 系统执行此操作：
 
     % cd utils
     % ./install_server.sh
