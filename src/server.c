@@ -4,15 +4,19 @@
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
+ * 如果满足下面的要求，可以以源代码和二进制形式重新分发和使用，无论是否做出修改
  *
  *   * Redistributions of source code must retain the above copyright notice,
  *     this list of conditions and the following disclaimer.
+ *     重新分发源代码必须保留上述版权声明、此条件列表和以下免责声明。
  *   * Redistributions in binary form must reproduce the above copyright
  *     notice, this list of conditions and the following disclaimer in the
  *     documentation and/or other materials provided with the distribution.
+ *     二进制形式的再分发必须在随分发提供的文档和/或其他材料中复制上述版权声明、此条件列表和以下免责声明。
  *   * Neither the name of Redis nor the names of its contributors may be used
  *     to endorse or promote products derived from this software without
  *     specific prior written permission.
+ *     未经事先明确的书面许可，不得使用 Redis 的名称或其贡献者的名称来认可或推广源自该软件的产品。
  *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
  * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
@@ -25,6 +29,12 @@
  * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
+ * 本软件由版权所有者和贡献者提供，并且不提供任何明示或默示的保证，
+ * 包括但不限于对适销性和特定用途适用性的默示保证。 
+ * 在任何情况下，版权所有者或贡献者均不对任何直接、间接、偶然、
+ * 特殊发生的惩戒性或后果性损害负责（包括但不限于采购替代商品或服务；使用、数据或利润损失； 或业务中断），
+ * 无论是由何种责任理论引起的，无论是在合同、严格责任或侵权行为中以任何方式使用本软件引起的，即使已被告知存在此类损害的可能性。
+ * （包括疏忽或其他方式）
  */
 
 #include "server.h"
@@ -61,24 +71,27 @@
 #include <sys/mman.h>
 #endif
 
-/* Our shared "common" objects */
+/* Our shared "common" objects 我们的共享通用对象 */
 
 struct sharedObjectsStruct shared;
 
 /* Global vars that are actually used as constants. The following double
  * values are used for double on-disk serialization, and are initialized
- * at runtime to avoid strange compiler optimizations. */
+ * at runtime to avoid strange compiler optimizations. 
+ * 实际用作常量的全局变量。 
+ * 以下double值用于双磁盘序列化，并在运行时初始化以避免奇怪的编译器优化。
+ * */
 
 double R_Zero, R_PosInf, R_NegInf, R_Nan;
 
 /*================================= Globals ================================= */
 
-/* Global vars */
-struct redisServer server; /* Server global state */
+/* Global vars 全局变量*/
+struct redisServer server; /* Server global state 服务器全局状态*/
 
-/* Our command table.
+/* Our command table. 我们的命令表
  *
- * Every entry is composed of the following fields:
+ * Every entry is composed of the following fields: 每一个条目都由下述字段组成
  *
  * name:        A string representing the command name.
  *

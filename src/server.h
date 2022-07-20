@@ -1,18 +1,22 @@
 /*
- * Copyright (c) 2009-2012, Salvatore Sanfilippo <antirez at gmail dot com>
+ * Copyright (c) 2009-2016, Salvatore Sanfilippo <antirez at gmail dot com>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
+ * 如果满足下面的要求，可以以源代码和二进制形式重新分发和使用，无论是否做出修改
  *
  *   * Redistributions of source code must retain the above copyright notice,
  *     this list of conditions and the following disclaimer.
+ *     重新分发源代码必须保留上述版权声明、此条件列表和以下免责声明。
  *   * Redistributions in binary form must reproduce the above copyright
  *     notice, this list of conditions and the following disclaimer in the
  *     documentation and/or other materials provided with the distribution.
+ *     二进制形式的再分发必须在随分发提供的文档和/或其他材料中复制上述版权声明、此条件列表和以下免责声明。
  *   * Neither the name of Redis nor the names of its contributors may be used
  *     to endorse or promote products derived from this software without
  *     specific prior written permission.
+ *     未经事先明确的书面许可，不得使用 Redis 的名称或其贡献者的名称来认可或推广源自该软件的产品。
  *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
  * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
@@ -25,6 +29,12 @@
  * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
+ * 本软件由版权所有者和贡献者提供，并且不提供任何明示或默示的保证，
+ * 包括但不限于对适销性和特定用途适用性的默示保证。 
+ * 在任何情况下，版权所有者或贡献者均不对任何直接、间接、偶然、
+ * 特殊发生的惩戒性或后果性损害负责（包括但不限于采购替代商品或服务；使用、数据或利润损失； 或业务中断），
+ * 无论是由何种责任理论引起的，无论是在合同、严格责任或侵权行为中以任何方式使用本软件引起的，即使已被告知存在此类损害的可能性。
+ * （包括疏忽或其他方式）
  */
 
 #ifndef __REDIS_H
@@ -54,25 +64,25 @@
 #include <systemd/sd-daemon.h>
 #endif
 
-typedef long long mstime_t; /* millisecond time type. */
-typedef long long ustime_t; /* microsecond time type. */
+typedef long long mstime_t; /* millisecond time type. 毫秒时间类型*/
+typedef long long ustime_t; /* microsecond time type. 微妙时间类型*/
 
-#include "ae.h"      /* Event driven programming library */
-#include "sds.h"     /* Dynamic safe strings */
+#include "ae.h"      /* Event driven programming library 事件驱动编程库 */
+#include "sds.h"     /* Dynamic safe strings 动态安全字符串*/
 #include "dict.h"    /* Hash tables */
 #include "adlist.h"  /* Linked lists */
-#include "zmalloc.h" /* total memory usage aware version of malloc/free */
-#include "anet.h"    /* Networking the easy way */
-#include "ziplist.h" /* Compact list data structure */
-#include "intset.h"  /* Compact integer set structure */
-#include "version.h" /* Version macro */
-#include "util.h"    /* Misc functions useful in many places */
-#include "latency.h" /* Latency monitor API */
-#include "sparkline.h" /* ASCII graphs API */
+#include "zmalloc.h" /* total memory usage aware version of malloc/free #malloc/free 的总内存使用感知版本 */
+#include "anet.h"    /* Networking the easy way 访问网络的简单方法*/
+#include "ziplist.h" /* Compact list data structure 小型list数据结构*/
+#include "intset.h"  /* Compact integer set structure 小型整型，集合数据结构*/
+#include "version.h" /* Version macro 版本宏*/
+#include "util.h"    /* Misc functions useful in many places 有用的函数*/
+#include "latency.h" /* Latency monitor API 延迟监视器API*/
+#include "sparkline.h" /* ASCII graphs API ASCII 图形 API*/
 #include "quicklist.h"  /* Lists are encoded as linked lists of
                            N-elements flat arrays */
-#include "rax.h"     /* Radix tree */
-#include "connection.h" /* Connection abstraction */
+#include "rax.h"     /* Radix tree 基数树*/
+#include "connection.h" /* Connection abstraction 抽象连接*/
 
 #define REDISMODULE_CORE 1
 #include "redismodule.h"    /* Redis modules API defines. */
@@ -88,7 +98,7 @@ typedef long long ustime_t; /* microsecond time type. */
 #define C_ERR                   -1
 
 /* Static server configuration */
-#define CONFIG_DEFAULT_HZ        10             /* Time interrupt calls/sec. */
+#define CONFIG_DEFAULT_HZ        10             /* Time interrupt calls/sec. 中断调用的时间，单位秒*/
 #define CONFIG_MIN_HZ            1
 #define CONFIG_MAX_HZ            500
 #define MAX_CLIENTS_PER_CLOCK_TICK 200          /* HZ is adapted based on that. */
@@ -98,14 +108,14 @@ typedef long long ustime_t; /* microsecond time type. */
 #define PROTO_SHARED_SELECT_CMDS 10
 #define OBJ_SHARED_INTEGERS 10000
 #define OBJ_SHARED_BULKHDR_LEN 32
-#define LOG_MAX_LEN    1024 /* Default maximum length of syslog messages.*/
+#define LOG_MAX_LEN    1024 /* Default maximum length of syslog messages. 系统日志消息的默认最大长度*/
 #define AOF_REWRITE_ITEMS_PER_CMD 64
 #define AOF_READ_DIFF_INTERVAL_BYTES (1024*10)
 #define CONFIG_AUTHPASS_MAX_LEN 512
 #define CONFIG_RUN_ID_SIZE 40
 #define RDB_EOF_MARK_SIZE 40
 #define CONFIG_REPL_BACKLOG_MIN_SIZE (1024*16)          /* 16k */
-#define CONFIG_BGSAVE_RETRY_DELAY 5 /* Wait a few secs before trying again. */
+#define CONFIG_BGSAVE_RETRY_DELAY 5 /* Wait a few secs before trying again. 重试时间 5秒*/
 #define CONFIG_DEFAULT_PID_FILE "/var/run/redis.pid"
 #define CONFIG_DEFAULT_CLUSTER_CONFIG_FILE "nodes.conf"
 #define CONFIG_DEFAULT_UNIX_SOCKET_PERM 0
@@ -1065,94 +1075,94 @@ struct clusterState;
 
 struct redisServer {
     /* General */
-    pid_t pid;                  /* Main process pid. */
-    pthread_t main_thread_id;         /* Main thread id */
-    char *configfile;           /* Absolute config file path, or NULL */
-    char *executable;           /* Absolute executable file path. */
-    char **exec_argv;           /* Executable argv vector (copy). */
-    int dynamic_hz;             /* Change hz value depending on # of clients. */
+    pid_t pid;                  /* Main process pid. 主进程pid*/
+    pthread_t main_thread_id;         /* Main thread id 主线程id*/
+    char *configfile;           /* Absolute config file path, or NULL 配置文件绝对路径*/
+    char *executable;           /* Absolute executable file path. 可执行文件绝对路径*/
+    char **exec_argv;           /* Executable argv vector (copy). 可执行参数数组（复制）*/
+    int dynamic_hz;             /* Change hz value depending on # of clients. 根据客户端改变hz的值*/
     int config_hz;              /* Configured HZ value. May be different than
                                    the actual 'hz' field value if dynamic-hz
-                                   is enabled. */
-    mode_t umask;               /* The umask value of the process on startup */
-    int hz;                     /* serverCron() calls frequency in hertz */
-    int in_fork_child;          /* indication that this is a fork child */
+                                   is enabled. 这是配置的HZ值，如果开启了dynmic-hz 那么这可能和真实的hz字段不一样 */
+    mode_t umask;               /* The umask value of the process on startup 开始进程的掩码值 */
+    int hz;                     /* serverCron() calls frequency in hertz 函数serverCron()的调用频率 */
+    int in_fork_child;          /* indication that this is a fork child 表明这是一个fork出来的子进程 */
     redisDb *db;
-    dict *commands;             /* Command table */
-    dict *orig_commands;        /* Command table before command renaming. */
+    dict *commands;             /* Command table 命令表*/
+    dict *orig_commands;        /* Command table before command renaming. 在命令重命名之前的命令表*/
     aeEventLoop *el;
-    _Atomic unsigned int lruclock; /* Clock for LRU eviction */
-    volatile sig_atomic_t shutdown_asap; /* SHUTDOWN needed ASAP */
-    int activerehashing;        /* Incremental rehash in serverCron() */
-    int active_defrag_running;  /* Active defragmentation running (holds current scan aggressiveness) */
-    char *pidfile;              /* PID file path */
-    int arch_bits;              /* 32 or 64 depending on sizeof(long) */
-    int cronloops;              /* Number of times the cron function run */
-    char runid[CONFIG_RUN_ID_SIZE+1];  /* ID always different at every exec. */
-    int sentinel_mode;          /* True if this instance is a Sentinel. */
-    size_t initial_memory_usage; /* Bytes used after initialization. */
-    int always_show_logo;       /* Show logo even for non-stdout logging. */
-    char *ignore_warnings;      /* Config: warnings that should be ignored. */
+    _Atomic unsigned int lruclock; /* Clock for LRU eviction LRU置换的时间*/
+    volatile sig_atomic_t shutdown_asap; /* SHUTDOWN needed ASAP 需要尽快关机*/
+    int activerehashing;        /* Incremental rehash in serverCron() 在serverCron()函数里执行rehash扩容 */
+    int active_defrag_running;  /* Active defragmentation running (holds current scan aggressiveness) 正在运行主动碎片整理（保持当前扫描积极性）*/
+    char *pidfile;              /* PID file path #PID文件路径 */
+    int arch_bits;              /* 32 or 64 depending on sizeof(long) #long的长度是32位还是64位*/
+    int cronloops;              /* Number of times the cron function run 运行cron函数的次数 */
+    char runid[CONFIG_RUN_ID_SIZE+1];  /* ID always different at every exec. 每一次执行ID都是不一样的*/
+    int sentinel_mode;          /* True if this instance is a Sentinel. 实例是否是哨兵模式 */
+    size_t initial_memory_usage; /* Bytes used after initialization. 初始化之后使用的Bytes大小*/
+    int always_show_logo;       /* Show logo even for non-stdout logging. 展示logo即使不使用控制台输出日志 */
+    char *ignore_warnings;      /* Config: warnings that should be ignored. 是否应该忽略警告*/
     /* Modules */
-    dict *moduleapi;            /* Exported core APIs dictionary for modules. */
+    dict *moduleapi;            /* Exported core APIs dictionary for modules. 为其他模块暴露的核心APIs目录 */
     dict *sharedapi;            /* Like moduleapi but containing the APIs that
-                                   modules share with each other. */
-    list *loadmodule_queue;     /* List of modules to load at startup. */
+                                   modules share with each other. 跟moduleapi一样，但还包含了和其他模块分享的APIs*/
+    list *loadmodule_queue;     /* List of modules to load at startup. 启动时需要加载的模块列表*/
     int module_blocked_pipe[2]; /* Pipe used to awake the event loop if a
                                    client blocked on a module command needs
-                                   to be processed. */
-    pid_t module_child_pid;     /* PID of module child */
+                                   to be processed. 如果需要处理在模块命令上阻塞的客户端，它是用于唤醒事件循环的管道 */
+    pid_t module_child_pid;     /* PID of module child 子模块的PID*/
     /* Networking */
-    int port;                   /* TCP listening port */
-    int tls_port;               /* TLS listening port */
-    int tcp_backlog;            /* TCP listen() backlog */
-    char *bindaddr[CONFIG_BINDADDR_MAX]; /* Addresses we should bind to */
-    int bindaddr_count;         /* Number of addresses in server.bindaddr[] */
+    int port;                   /* TCP listening port #TCP监听端口 */
+    int tls_port;               /* TLS listening port #TLS监听端口 */
+    int tcp_backlog;            /* TCP listen() backlog #TCP listen（）积压*/
+    char *bindaddr[CONFIG_BINDADDR_MAX]; /* Addresses we should bind to 我们需要去绑定的地址*/
+    int bindaddr_count;         /* Number of addresses in server.bindaddr[] 我们绑定的地址数量*/
     char *unixsocket;           /* UNIX socket path */
     mode_t unixsocketperm;      /* UNIX socket permission */
-    int ipfd[CONFIG_BINDADDR_MAX]; /* TCP socket file descriptors */
+    int ipfd[CONFIG_BINDADDR_MAX]; /* TCP socket file descriptors #TCP socket文件描述符*/
     int ipfd_count;             /* Used slots in ipfd[] */
-    int tlsfd[CONFIG_BINDADDR_MAX]; /* TLS socket file descriptors */
+    int tlsfd[CONFIG_BINDADDR_MAX]; /* TLS socket file descriptors #TLS socket文件描述符*/
     int tlsfd_count;            /* Used slots in tlsfd[] */
-    int sofd;                   /* Unix socket file descriptor */
-    int cfd[CONFIG_BINDADDR_MAX];/* Cluster bus listening socket */
+    int sofd;                   /* Unix socket file descriptor #Unix socket文件描述符*/
+    int cfd[CONFIG_BINDADDR_MAX];/* Cluster bus listening socket 集群监听socket的总线*/
     int cfd_count;              /* Used slots in cfd[] */
-    list *clients;              /* List of active clients */
-    list *clients_to_close;     /* Clients to close asynchronously */
-    list *clients_pending_write; /* There is to write or install handler. */
-    list *clients_pending_read;  /* Client has pending read socket buffers. */
+    list *clients;              /* List of active clients 活跃的客户端列表*/
+    list *clients_to_close;     /* Clients to close asynchronously 异步去关闭客户端*/
+    list *clients_pending_write; /* There is to write or install handler. 需要写入客户端的数据*/
+    list *clients_pending_read;  /* Client has pending read socket buffers. 需要读取的客户端数据*/
     list *slaves, *monitors;    /* List of slaves and MONITORs */
-    client *current_client;     /* Current client executing the command. */
-    rax *clients_timeout_table; /* Radix tree for blocked clients timeouts. */
-    long fixed_time_expire;     /* If > 0, expire keys against server.mstime. */
-    rax *clients_index;         /* Active clients dictionary by client ID. */
-    int clients_paused;         /* True if clients are currently paused */
-    mstime_t clients_pause_end_time; /* Time when we undo clients_paused */
-    char neterr[ANET_ERR_LEN];   /* Error buffer for anet.c */
-    dict *migrate_cached_sockets;/* MIGRATE cached sockets */
-    _Atomic uint64_t next_client_id; /* Next client unique ID. Incremental. */
-    int protected_mode;         /* Don't accept external connections. */
+    client *current_client;     /* Current client executing the command. 正在执行命令的客户端*/
+    rax *clients_timeout_table; /* Radix tree for blocked clients timeouts. 超时客户端的Radix*/
+    long fixed_time_expire;     /* If > 0, expire keys against server.mstime. 如果 > 0，则针对 server.mstime 使keys过期。 */
+    rax *clients_index;         /* Active clients dictionary by client ID. 活跃的客户端Id目录*/
+    int clients_paused;         /* True if clients are currently paused 客户端是否被暂停*/
+    mstime_t clients_pause_end_time; /* Time when we undo clients_paused 我们撤消clients_paused的时间*/
+    char neterr[ANET_ERR_LEN];   /* Error buffer for anet.c 来自anet.c的错误的数据缓冲区 */
+    dict *migrate_cached_sockets;/* MIGRATE cached sockets 迁移缓存的套接字*/
+    _Atomic uint64_t next_client_id; /* Next client unique ID. Incremental. 下一个客户端的唯一id，递增*/
+    int protected_mode;         /* Don't accept external connections. 保护模式，不接收外部连接 */
     int gopher_enabled;         /* If true the server will reply to gopher
-                                   queries. Will still serve RESP2 queries. */
-    int io_threads_num;         /* Number of IO threads to use. */
-    int io_threads_do_reads;    /* Read and parse from IO threads? */
-    int io_threads_active;      /* Is IO threads currently active? */
+                                   queries. Will still serve RESP2 queries. 如果为 true，服务器将回复 gopher 查询。 仍将提供 RESP2 查询*/
+    int io_threads_num;         /* Number of IO threads to use. 使用I/O线程的数量*/
+    int io_threads_do_reads;    /* Read and parse from IO threads? 用做读取的I/O线程数量*/
+    int io_threads_active;      /* Is IO threads currently active? 活跃的I/O线程数量*/
     long long events_processed_while_blocked; /* processEventsWhileBlocked() */
 
     /* RDB / AOF loading information */
-    volatile sig_atomic_t loading; /* We are loading data from disk if true */
+    volatile sig_atomic_t loading; /* We are loading data from disk if true 如果为true，我们会从磁盘加载数据*/
     off_t loading_total_bytes;
     off_t loading_loaded_bytes;
     time_t loading_start_time;
     off_t loading_process_events_interval_bytes;
-    /* Fast pointers to often looked up command */
+    /* Fast pointers to often looked up command 一些指针指向经常使用的命令 */
     struct redisCommand *delCommand, *multiCommand, *lpushCommand,
                         *lpopCommand, *rpopCommand, *zpopminCommand,
                         *zpopmaxCommand, *sremCommand, *execCommand,
                         *expireCommand, *pexpireCommand, *xclaimCommand,
                         *xgroupCommand, *rpoplpushCommand;
-    /* Fields used only for stats */
-    time_t stat_starttime;          /* Server start time */
+    /* Fields used only for stats 仅用于统计的字段*/
+    time_t stat_starttime;          /* Server start time 服务开始时间*/
     long long stat_numcommands;     /* Number of processed commands */
     long long stat_numconnections;  /* Number of connections received */
     long long stat_expiredkeys;     /* Number of expired keys */
