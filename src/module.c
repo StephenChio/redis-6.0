@@ -5406,7 +5406,7 @@ void RM_SetClusterFlags(RedisModuleCtx *ctx, uint64_t flags) {
  * not used.
  * -------------------------------------------------------------------------- */
 
-static rax *Timers;     /* The radix tree of all the timers sorted by expire. */
+static rax *Timers;     /* The radix tree of all the timers sorted by expire. 按 expire过期时间 排序的所有定时器的基数树。 */
 long long aeTimer = -1; /* Main event loop (ae.c) timer identifier. */
 
 typedef void (*RedisModuleTimerProc)(RedisModuleCtx *ctx, void *data);
@@ -7527,23 +7527,28 @@ int moduleRegisterApi(const char *funcname, void *funcptr) {
 #define REGISTER_API(name) \
     moduleRegisterApi("RedisModule_" #name, (void *)(unsigned long)RM_ ## name)
 
-/* Global initialization at Redis startup. */
+/* Global initialization at Redis startup. 全局初始化核心API */
 void moduleRegisterCoreAPI(void);
 
+/**
+ * @brief 初始化模块系统
+ * 
+ */
 void moduleInitModulesSystem(void) {
     moduleUnblockedClients = listCreate();
     server.loadmodule_queue = listCreate();
     modules = dictCreate(&modulesDictType,NULL);
 
-    /* Set up the keyspace notification subscriber list and static client */
+    /* Set up the keyspace notification subscriber list and static client 
+    设置keyspace通知订阅者列表和静态客户端*/
     moduleKeyspaceSubscribers = listCreate();
     moduleFreeContextReusedClient = createClient(NULL);
     moduleFreeContextReusedClient->flags |= CLIENT_MODULE;
     moduleFreeContextReusedClient->user = NULL; /* root user. */
 
-    /* Set up filter list */
+    /* Set up filter list 设置过滤列表*/
     moduleCommandFilters = listCreate();
-
+    //全局初始化核心API
     moduleRegisterCoreAPI();
     if (pipe(server.module_blocked_pipe) == -1) {
         serverLog(LL_WARNING,
@@ -7552,18 +7557,21 @@ void moduleInitModulesSystem(void) {
         exit(1);
     }
     /* Make the pipe non blocking. This is just a best effort aware mechanism
-     * and we do not want to block not in the read nor in the write half. */
+     * and we do not want to block not in the read nor in the write half. 
+     使管道非堵塞。 这只是一种尽力而为的机制，我们不想在读或写一半中阻塞。*/
     anetNonBlock(NULL,server.module_blocked_pipe[0]);
     anetNonBlock(NULL,server.module_blocked_pipe[1]);
 
-    /* Create the timers radix tree. */
+    /* Create the timers radix tree. 创建按 expire过期时间 排序的所有定时器的基数树。 */
     Timers = raxNew();
 
-    /* Setup the event listeners data structures. */
+    /* Setup the event listeners data structures. 为数据结构设置事件监听器*/
     RedisModule_EventListeners = listCreate();
 
     /* Our thread-safe contexts GIL must start with already locked:
-     * it is just unlocked when it's safe. */
+     * it is just unlocked when it's safe. 
+       我们的线程安全上下文 GIL 必须从已锁定开始：它在安全时才解锁
+     */
     pthread_mutex_lock(&moduleGIL);
 }
 
@@ -8088,7 +8096,8 @@ int *RM_GetCommandKeys(RedisModuleCtx *ctx, RedisModuleString **argv, int argc, 
 }
 
 /* Register all the APIs we export. Keep this function at the end of the
- * file so that's easy to seek it to add new entries. */
+ * file so that's easy to seek it to add new entries. 
+ 注册我们需要暴露的所有APIs，将此函数保留在文件末尾，以便于查找它以添加新条目。*/
 void moduleRegisterCoreAPI(void) {
     server.moduleapi = dictCreate(&moduleAPIDictType,NULL);
     server.sharedapi = dictCreate(&moduleAPIDictType,NULL);

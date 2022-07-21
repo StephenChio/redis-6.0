@@ -1305,7 +1305,9 @@ void updateSlavesWaitingBgsave(int bgsaveerr, int type) {
 /* Change the current instance replication ID with a new, random one.
  * This will prevent successful PSYNCs between this master and other
  * slaves, so the command should be called when something happens that
- * alters the current story of the dataset. */
+ * alters the current story of the dataset.
+ * 用一个新的随机id改变当前实例的复制id
+ * 这会阻止主节点和从节点之间的数据同步，所以发生当某些修改了当前的数据集合的事情的时候这个命令应该被执行*/
 void changeReplicationId(void) {
     getRandomHexChars(server.replid,CONFIG_RUN_ID_SIZE);
     server.replid[CONFIG_RUN_ID_SIZE] = '\0';
@@ -1313,7 +1315,8 @@ void changeReplicationId(void) {
 
 /* Clear (invalidate) the secondary replication ID. This happens, for
  * example, after a full resynchronization, when we start a new replication
- * history. */
+ * history. 
+ * 清除（无效）辅助复制 ID。 例如，在完全重新同步之后，当我们开始新的复制时，就会发生这种情况。 */
 void clearReplicationId2(void) {
     memset(server.replid2,'0',sizeof(server.replid));
     server.replid2[CONFIG_RUN_ID_SIZE] = '\0';

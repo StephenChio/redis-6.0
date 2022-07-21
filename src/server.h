@@ -85,23 +85,23 @@ typedef long long ustime_t; /* microsecond time type. 微妙时间类型*/
 #include "connection.h" /* Connection abstraction 抽象连接*/
 
 #define REDISMODULE_CORE 1
-#include "redismodule.h"    /* Redis modules API defines. */
+#include "redismodule.h"    /* Redis modules API defines. #Redis模块API定义 */
 
-/* Following includes allow test functions to be called from Redis main() */
+/* Following includes allow test functions to be called from Redis main() #以下包括允许从 Redis main() 调用测试函数*/
 #include "zipmap.h"
 #include "sha1.h"
 #include "endianconv.h"
 #include "crc64.h"
 
-/* Error codes */
+/* Error codes 错误代号*/
 #define C_OK                    0
 #define C_ERR                   -1
 
-/* Static server configuration */
+/* Static server configuration 静态服务器配置*/
 #define CONFIG_DEFAULT_HZ        10             /* Time interrupt calls/sec. 中断调用的时间，单位秒*/
 #define CONFIG_MIN_HZ            1
 #define CONFIG_MAX_HZ            500
-#define MAX_CLIENTS_PER_CLOCK_TICK 200          /* HZ is adapted based on that. */
+#define MAX_CLIENTS_PER_CLOCK_TICK 200          /* HZ is adapted based on that. #HZ 在此基础上进行了适配*/
 #define CONFIG_MAX_LINE    1024
 #define CRON_DBS_PER_CALL 16
 #define NET_MAX_WRITES_PER_EVENT (1024*64)
@@ -114,10 +114,10 @@ typedef long long ustime_t; /* microsecond time type. 微妙时间类型*/
 #define CONFIG_AUTHPASS_MAX_LEN 512
 #define CONFIG_RUN_ID_SIZE 40
 #define RDB_EOF_MARK_SIZE 40
-#define CONFIG_REPL_BACKLOG_MIN_SIZE (1024*16)          /* 16k */
+#define CONFIG_REPL_BACKLOG_MIN_SIZE (1024*16)          /* 积压日志的最小大小 16k */
 #define CONFIG_BGSAVE_RETRY_DELAY 5 /* Wait a few secs before trying again. 重试时间 5秒*/
-#define CONFIG_DEFAULT_PID_FILE "/var/run/redis.pid"
-#define CONFIG_DEFAULT_CLUSTER_CONFIG_FILE "nodes.conf"
+#define CONFIG_DEFAULT_PID_FILE "/var/run/redis.pid"  
+#define CONFIG_DEFAULT_CLUSTER_CONFIG_FILE "nodes.conf" //默认集群配置文件
 #define CONFIG_DEFAULT_UNIX_SOCKET_PERM 0
 #define CONFIG_DEFAULT_LOGFILE ""
 #define NET_IP_STR_LEN 46 /* INET6_ADDRSTRLEN is 46, but we need to be sure */
@@ -133,34 +133,41 @@ typedef long long ustime_t; /* microsecond time type. 微妙时间类型*/
  * a saving child (RDB or AOF one), without triggering in the parent the
  * write protection that is normally turned on on write errors.
  * Usually children that are terminated with SIGUSR1 will exit with this
- * special code. */
+ * special code.
+ * 子进程将退出并带有此状态代码以表示进程正常终止：
+ * 这对于杀死正在保存的子进程（RDB 或 AOF 之一）很有用，
+ * 这不会在父进程中触发写入错误。 
+ * 通常以 SIGUSR1 终止的子进程将使用此特殊代码退出 
+ * */
 #define SERVER_CHILD_NOERROR_RETVAL    255
 
-/* Instantaneous metrics tracking. */
-#define STATS_METRIC_SAMPLES 16     /* Number of samples per metric. */
-#define STATS_METRIC_COMMAND 0      /* Number of commands executed. */
-#define STATS_METRIC_NET_INPUT 1    /* Bytes read to network .*/
-#define STATS_METRIC_NET_OUTPUT 2   /* Bytes written to network. */
+/* Instantaneous metrics tracking. 瞬时指标跟踪 */
+#define STATS_METRIC_SAMPLES 16     /* Number of samples per metric. 每个指标的样本数*/
+#define STATS_METRIC_COMMAND 0      /* Number of commands executed. 执行的命令数量*/
+#define STATS_METRIC_NET_INPUT 1    /* Bytes read to network .读取字节*/
+#define STATS_METRIC_NET_OUTPUT 2   /* Bytes written to network. 写入字节*/
 #define STATS_METRIC_COUNT 3
 
-/* Protocol and I/O related defines */
-#define PROTO_MAX_QUERYBUF_LEN  (1024*1024*1024) /* 1GB max query buffer. */
-#define PROTO_IOBUF_LEN         (1024*16)  /* Generic I/O buffer size */
-#define PROTO_REPLY_CHUNK_BYTES (16*1024) /* 16k output buffer */
-#define PROTO_INLINE_MAX_SIZE   (1024*64) /* Max size of inline reads */
+/* Protocol and I/O related defines 协议和I/O 相关定义 */
+#define PROTO_MAX_QUERYBUF_LEN  (1024*1024*1024) /* 1GB max query buffer. 1GB最大查询缓冲区*/
+#define PROTO_IOBUF_LEN         (1024*16)  /* Generic I/O buffer size *通用I/O 缓冲区大小 /
+#define PROTO_REPLY_CHUNK_BYTES (16*1024) /* 16k output buffer 16K输出缓冲区 */
+#define PROTO_INLINE_MAX_SIZE   (1024*64) /* Max size of inline reads 内联读取的最大大小*/
 #define PROTO_MBULK_BIG_ARG     (1024*32)
 #define LONG_STR_SIZE      21          /* Bytes needed for long -> str + '\0' */
-#define REDIS_AUTOSYNC_BYTES (1024*1024*32) /* fdatasync every 32MB */
+#define REDIS_AUTOSYNC_BYTES (1024*1024*32) /* fdatasync every 32MB 每32MB进行数据同步*/
 
-#define LIMIT_PENDING_QUERYBUF (4*1024*1024) /* 4mb */
+#define LIMIT_PENDING_QUERYBUF (4*1024*1024) /* 4mb 待读取的查询数据限制4mb*/
 
 /* When configuring the server eventloop, we setup it so that the total number
  * of file descriptors we can handle are server.maxclients + RESERVED_FDS +
  * a few more to stay safe. Since RESERVED_FDS defaults to 32, we add 96
- * in order to make sure of not over provisioning more than 128 fds. */
+ * in order to make sure of not over provisioning more than 128 fds. 
+ * 当我们配置服务器的事件循环的时候，我们设置该值来限制最大的文件描述符数量，我们可以处理 server.maxclients + RESERVED_FDS + 一些额外的空间来保证安全
+ * 因为RESERVED_FDS默认是32，我们在此基础上增加96来确保不会超过128*/
 #define CONFIG_FDSET_INCR (CONFIG_MIN_RESERVED_FDS+96)
 
-/* OOM Score Adjustment classes. */
+/* OOM Score Adjustment classes. 内存溢出的一些分类*/
 #define CONFIG_OOM_MASTER 0
 #define CONFIG_OOM_REPLICA 1
 #define CONFIG_OOM_BGCHILD 2
@@ -168,11 +175,12 @@ typedef long long ustime_t; /* microsecond time type. 微妙时间类型*/
 
 extern int configOOMScoreAdjValuesDefaults[CONFIG_OOM_COUNT];
 
-/* Hash table parameters */
+/* Hash table parameters #hashtable的参数*/
 #define HASHTABLE_MIN_FILL        10      /* Minimal hash table fill 10% */
 
 /* Command flags. Please check the command table defined in the server.c file
- * for more information about the meaning of every flag. */
+ * for more information about the meaning of every flag. 
+ 命令标志。 请检查 server.c 文件中定义的命令表以获取有关每个标志含义的更多信息。 */
 #define CMD_WRITE (1ULL<<0)            /* "write" flag */
 #define CMD_READONLY (1ULL<<1)         /* "read-only" flag */
 #define CMD_DENYOOM (1ULL<<2)          /* "use-memory" flag */
@@ -217,40 +225,40 @@ extern int configOOMScoreAdjValuesDefaults[CONFIG_OOM_COUNT];
 #define CMD_CATEGORY_TRANSACTION (1ULL<<37)
 #define CMD_CATEGORY_SCRIPTING (1ULL<<38)
 
-/* AOF states */
+/* AOF states AOF状态*/
 #define AOF_OFF 0             /* AOF is off */
 #define AOF_ON 1              /* AOF is on */
-#define AOF_WAIT_REWRITE 2    /* AOF waits rewrite to start appending */
+#define AOF_WAIT_REWRITE 2    /* AOF waits rewrite to start appending 在等待重写和开始追加 */
 
-/* Client flags */
-#define CLIENT_SLAVE (1<<0)   /* This client is a repliaca */
-#define CLIENT_MASTER (1<<1)  /* This client is a master */
-#define CLIENT_MONITOR (1<<2) /* This client is a slave monitor, see MONITOR */
+/* Client flags 客户端标志 */
+#define CLIENT_SLAVE (1<<0)   /* This client is a repliaca 从节点*/
+#define CLIENT_MASTER (1<<1)  /* This client is a master 主节点*/
+#define CLIENT_MONITOR (1<<2) /* This client is a slave monitor, see MONITOR 哨兵节点*/
 #define CLIENT_MULTI (1<<3)   /* This client is in a MULTI context */
-#define CLIENT_BLOCKED (1<<4) /* The client is waiting in a blocking operation */
+#define CLIENT_BLOCKED (1<<4) /* The client is waiting in a blocking operation 在等待一个阻塞操作*/
 #define CLIENT_DIRTY_CAS (1<<5) /* Watched keys modified. EXEC will fail. */
-#define CLIENT_CLOSE_AFTER_REPLY (1<<6) /* Close after writing entire reply. */
+#define CLIENT_CLOSE_AFTER_REPLY (1<<6) /* Close after writing entire reply. 在完成传输之后关闭*/
 #define CLIENT_UNBLOCKED (1<<7) /* This client was unblocked and is stored in
-                                  server.unblocked_clients */
-#define CLIENT_LUA (1<<8) /* This is a non connected client used by Lua */
-#define CLIENT_ASKING (1<<9)     /* Client issued the ASKING command */
-#define CLIENT_CLOSE_ASAP (1<<10)/* Close this client ASAP */
-#define CLIENT_UNIX_SOCKET (1<<11) /* Client connected via Unix domain socket */
-#define CLIENT_DIRTY_EXEC (1<<12)  /* EXEC will fail for errors while queueing */
+                                  server.unblocked_clients 此客户端是非阻塞的并且记录在服务器非阻塞客户端列表*/
+#define CLIENT_LUA (1<<8) /* This is a non connected client used by Lua 这是一个Lua客户端*/
+#define CLIENT_ASKING (1<<9)     /* Client issued the ASKING command 客户端发布了ASKING命令*/
+#define CLIENT_CLOSE_ASAP (1<<10)/* Close this client ASAP 尽快关闭此客户端*/
+#define CLIENT_UNIX_SOCKET (1<<11) /* Client connected via Unix domain socket 客户端通过Unix domain socket进行连接*/
+#define CLIENT_DIRTY_EXEC (1<<12)  /* EXEC will fail for errors while queueing 排队时 EXEC 将因错误而失败*/
 #define CLIENT_MASTER_FORCE_REPLY (1<<13)  /* Queue replies even if is master */
-#define CLIENT_FORCE_AOF (1<<14)   /* Force AOF propagation of current cmd. */
-#define CLIENT_FORCE_REPL (1<<15)  /* Force replication of current cmd. */
+#define CLIENT_FORCE_AOF (1<<14)   /* Force AOF propagation of current cmd. #cmd传进来的强制AOF*/
+#define CLIENT_FORCE_REPL (1<<15)  /* Force replication of current cmd. #cmd传进来的强制复制*/
 #define CLIENT_PRE_PSYNC (1<<16)   /* Instance don't understand PSYNC. */
-#define CLIENT_READONLY (1<<17)    /* Cluster client is in read-only state. */
-#define CLIENT_PUBSUB (1<<18)      /* Client is in Pub/Sub mode. */
+#define CLIENT_READONLY (1<<17)    /* Cluster client is in read-only state. 集群客户端处于只读状态*/
+#define CLIENT_PUBSUB (1<<18)      /* Client is in Pub/Sub mode. 客户端处于发布订阅模式*/
 #define CLIENT_PREVENT_AOF_PROP (1<<19)  /* Don't propagate to AOF. */
 #define CLIENT_PREVENT_REPL_PROP (1<<20)  /* Don't propagate to slaves. */
 #define CLIENT_PREVENT_PROP (CLIENT_PREVENT_AOF_PROP|CLIENT_PREVENT_REPL_PROP)
 #define CLIENT_PENDING_WRITE (1<<21) /* Client has output to send but a write
-                                        handler is yet not installed. */
-#define CLIENT_REPLY_OFF (1<<22)   /* Don't send replies to client. */
+                                        handler is yet not installed. 客户端有要发送的输出，但尚未安装写处理程序。 */
+#define CLIENT_REPLY_OFF (1<<22)   /* Don't send replies to client. 不发送回复到客户端*/
 #define CLIENT_REPLY_SKIP_NEXT (1<<23)  /* Set CLIENT_REPLY_SKIP for next cmd */
-#define CLIENT_REPLY_SKIP (1<<24)  /* Don't send just this reply. */
+#define CLIENT_REPLY_SKIP (1<<24)  /* Don't send just this reply. 此次回复不发送*/
 #define CLIENT_LUA_DEBUG (1<<25)  /* Run EVAL in debug mode. */
 #define CLIENT_LUA_DEBUG_SYNC (1<<26)  /* EVAL debugging without fork() */
 #define CLIENT_MODULE (1<<27) /* Non connected client used by some module. */
@@ -263,7 +271,7 @@ extern int configOOMScoreAdjValuesDefaults[CONFIG_OOM_COUNT];
                                           client has already pending commands
                                           to be executed. */
 #define CLIENT_TRACKING (1ULL<<31) /* Client enabled keys tracking in order to
-                                   perform client side caching. */
+                                   perform client side caching. 在线程 I/O 中使用，以在我们返回单线程后发出信号，表明客户端已经有待执行的命令。*/
 #define CLIENT_TRACKING_BROKEN_REDIR (1ULL<<32) /* Target client is invalid. */
 #define CLIENT_TRACKING_BCAST (1ULL<<33) /* Tracking in BCAST mode. */
 #define CLIENT_TRACKING_OPTIN (1ULL<<34)  /* Tracking in opt-in mode. */
@@ -277,70 +285,112 @@ extern int configOOMScoreAdjValuesDefaults[CONFIG_OOM_COUNT];
 #define CLIENT_CLOSE_AFTER_COMMAND (1ULL<<40) /* Close after executing commands
                                                * and writing entire reply. */
 
-/* Client block type (btype field in client structure)
- * if CLIENT_BLOCKED flag is set. */
+/* Client block type (btype field in client structure) 客户端阻塞类型（客户端结构中的 btype 字段）
+ * if CLIENT_BLOCKED flag is set. 客户端阻塞标志*/
 #define BLOCKED_NONE 0    /* Not blocked, no CLIENT_BLOCKED flag set. */
 #define BLOCKED_LIST 1    /* BLPOP & co. */
-#define BLOCKED_WAIT 2    /* WAIT for synchronous replication. */
-#define BLOCKED_MODULE 3  /* Blocked by a loadable module. */
+#define BLOCKED_WAIT 2    /* WAIT for synchronous replication.等待异步复制 */
+#define BLOCKED_MODULE 3  /* Blocked by a loadable module. 被模块阻塞*/
 #define BLOCKED_STREAM 4  /* XREAD. */
 #define BLOCKED_ZSET 5    /* BZPOP et al. */
-#define BLOCKED_NUM 6     /* Number of blocked states. */
+#define BLOCKED_NUM 6     /* Number of blocked states. 阻塞的状态数量*/
 
-/* Client request types */
+/* Client request types 客户端请求类型*/
 #define PROTO_REQ_INLINE 1
 #define PROTO_REQ_MULTIBULK 2
 
 /* Client classes for client limits, currently used only for
- * the max-client-output-buffer limit implementation. */
-#define CLIENT_TYPE_NORMAL 0 /* Normal req-reply clients + MONITORs */
-#define CLIENT_TYPE_SLAVE 1  /* Slaves. */
-#define CLIENT_TYPE_PUBSUB 2 /* Clients subscribed to PubSub channels. */
-#define CLIENT_TYPE_MASTER 3 /* Master. */
-#define CLIENT_TYPE_COUNT 4  /* Total number of client types. */
+ * the max-client-output-buffer limit implementation. 
+ 客户端类别限制*/
+#define CLIENT_TYPE_NORMAL 0 /* Normal req-reply clients + MONITORs 正常的请求回复客户端*/
+#define CLIENT_TYPE_SLAVE 1  /* Slaves. 从节点*/
+#define CLIENT_TYPE_PUBSUB 2 /* Clients subscribed to PubSub channels. 订阅了发布者管道的客户端*/
+#define CLIENT_TYPE_MASTER 3 /* Master. 主节点*/
+#define CLIENT_TYPE_COUNT 4  /* Total number of client types. 所有的客户端类型数量 */
 #define CLIENT_TYPE_OBUF_COUNT 3 /* Number of clients to expose to output
                                     buffer configuration. Just the first
-                                    three: normal, slave, pubsub. */
+                                    three: normal, slave, pubsub.只有前三个需要输出数据，主节点只写入数据*/
 
 /* Slave replication state. Used in server.repl_state for slaves to remember
- * what to do next. */
-#define REPL_STATE_NONE 0 /* No active replication */
-#define REPL_STATE_CONNECT 1 /* Must connect to master */
-#define REPL_STATE_CONNECTING 2 /* Connecting to master */
-/* --- Handshake states, must be ordered --- */
-#define REPL_STATE_RECEIVE_PONG 3 /* Wait for PING reply */
-#define REPL_STATE_SEND_AUTH 4 /* Send AUTH to master */
-#define REPL_STATE_RECEIVE_AUTH 5 /* Wait for AUTH reply */
-#define REPL_STATE_SEND_PORT 6 /* Send REPLCONF listening-port */
-#define REPL_STATE_RECEIVE_PORT 7 /* Wait for REPLCONF reply */
-#define REPL_STATE_SEND_IP 8 /* Send REPLCONF ip-address */
-#define REPL_STATE_RECEIVE_IP 9 /* Wait for REPLCONF reply */
-#define REPL_STATE_SEND_CAPA 10 /* Send REPLCONF capa */
-#define REPL_STATE_RECEIVE_CAPA 11 /* Wait for REPLCONF reply */
-#define REPL_STATE_SEND_PSYNC 12 /* Send PSYNC */
-#define REPL_STATE_RECEIVE_PSYNC 13 /* Wait for PSYNC reply */
-/* --- End of handshake states --- */
-#define REPL_STATE_TRANSFER 14 /* Receiving .rdb from master */
-#define REPL_STATE_CONNECTED 15 /* Connected to master */
+ * what to do next. 
+ 从节点复制状态，在 server.repl_state 中用于从节点记住下一步该做什么。*/
+#define REPL_STATE_NONE 0 /* No active replication 没有处于复制状态*/
+#define REPL_STATE_CONNECT 1 /* Must connect to master 必须连接主节点*/
+#define REPL_STATE_CONNECTING 2 /* Connecting to master 正在连接主节点*/
+/* --- Handshake states, must be ordered --- 握手状态 */
+/**
+ * slave 向 master 发送一个 PING 命令，以检査套接字的读写状态是否正常、 master 能否正常处理命令请求。
+ * 如果 slave 收到 "PONG" 回复，那么表示 master 和 slave 之间的网络连接状态正常， 并且 master 可以正常处理命令请求。
+ * 如果是其他回复或者没有回复，表示 master 和 slave 之间的网络连接状态不佳或者 master 暂时没办法处理 slave 的命令请求，
+ * 则 slave 进入 error 流程：slave 断开当前的连接，之后再进行重试。
+ */
+#define REPL_STATE_RECEIVE_PONG 3 /* Wait for PING reply 正在等待ping回复*/
+/**
+ * 1.如果 master 和 slave 都没有设置密码，则无需验证。
+ * 2.如果 master 和 slave 都设置了密码，并且密码相同，则验证成功。
+ * 3.否则，master 和 slave 设置的密码不同、master 和 slave 一个设置密码一个没设置密码都会返回错误。
+ *  所有错误情况都会令 slave 进入 error 流程：slave 断开当前的连接，之后再进行重试。
+ */
+#define REPL_STATE_SEND_AUTH 4 /* Send AUTH to master 向主节点发送认证*/
+#define REPL_STATE_RECEIVE_AUTH 5 /* Wait for AUTH reply 等待认证回复*/
+/**
+ * 在身份验证通过后后， slave 将向 master 发送自己的监听端口号， 
+ * master 收到后记录在 slave 所对应的客户端状态的 slave_listening_port 属性中。
+ */
+#define REPL_STATE_SEND_PORT 6 /* Send REPLCONF listening-port 发送监听端口*/
+#define REPL_STATE_RECEIVE_PORT 7 /* Wait for REPLCONF reply 等待监听端口回复*/
+/**
+ * 如果配置了 slave_announce_ip，则 slave 向 master 发送 slave_announce_ip 配置的 IP 地址， 
+ * master 收到后记录在 slave 所对应的客户端状态的 slave_ip 属性。
+ * 配置是用于解决服务器返回内网 IP 时，其他服务器无法访问的情况。可以通过该配置直接指定公网 IP。
+ */
+#define REPL_STATE_SEND_IP 8 /* Send REPLCONF ip-address 发送ip地址*/
+#define REPL_STATE_RECEIVE_IP 9 /* Wait for REPLCONF reply 等待ip地址回复*/
+/**
+ * CAPA 全称是 capabilities，这边表示的是同步复制的能力。
+ * slave 会在这一阶段发送 capa 告诉 master 自己具备的（同步）复制能力， master 收到后记录在 slave 所对应的客户端状态的 slave_capa 属性。
+ * CAPA 在最新的 Redis 6.0 版本中有两种值：eof 和 psync2。
+ * eof 表示 slave 支持直接接收从 socket 发送过来的 RDB 数据流，也就是无盘加载（diskless_load）。
+ * psync2 表示 slave 支持 Redis 4.0 引入的部分重同步 v2 版本
+ * 
+ */
+#define REPL_STATE_SEND_CAPA 10 /* Send REPLCONF capa 发送capa*/
+#define REPL_STATE_RECEIVE_CAPA 11 /* Wait for REPLCONF reply 等待capa回复*/
+/**
+ * slave 将向 master 发送 PSYNC 命令， master 收到该命令后判断是进行部分重同步还是完整重同步，然后根据策略进行数据的同步。
+ * 如果是 slave 第一次执行复制，则向 master 发送 PSYNC ? -1， master 返回 +FULLRESYNC <replid> <offset> 执行完整重同步
+ * 如果不是第一次执行复制，则向 master 发送 PSYNC replid offset，其中 replid 是 master 的复制 ID，而 offset 是 slave 当前的复制偏移量。master 根据 replid 和 offset 来判断应该执行哪种同步操作。
+ * 如果是完整重同步，则返回 +FULLRESYNC <replid> <offset>；如果是部分重同步，则返回 +CONTINUE <replid>，此时 slave 只需等待 master 将自己缺少的数据发送过来就可以。
+ * 
+ */
+#define REPL_STATE_SEND_PSYNC 12 /* Send PSYNC 发送psync*/
+#define REPL_STATE_RECEIVE_PSYNC 13 /* Wait for PSYNC reply 等待psync回复*/
+/* --- End of handshake states --- 结束握手状态 */
+#define REPL_STATE_TRANSFER 14 /* Receiving .rdb from master 正在从主节点接收.rdb*/
+#define REPL_STATE_CONNECTED 15 /* Connected to master 已经连接上主节点*/
 
 /* State of slaves from the POV of the master. Used in client->replstate.
  * In SEND_BULK and ONLINE state the slave receives new updates
  * in its output queue. In the WAIT_BGSAVE states instead the server is waiting
- * to start the next background saving in order to send updates to it. */
-#define SLAVE_STATE_WAIT_BGSAVE_START 6 /* We need to produce a new RDB file. */
-#define SLAVE_STATE_WAIT_BGSAVE_END 7 /* Waiting RDB file creation to finish. */
-#define SLAVE_STATE_SEND_BULK 8 /* Sending RDB file to slave. */
-#define SLAVE_STATE_ONLINE 9 /* RDB file transmitted, sending just updates. */
+ * to start the next background saving in order to send updates to it. 
+ * 来自主节点的 POV 的从节点状态。 
+ * 在 client->replstate 中使用。
+ * 在 SEND_BULK 和 ONLINE 状态下，从节点 在其输出队列中接收新的更新。 
+ * 相反，在 WAIT_BGSAVE 状态下，服务器正在等待开始下一次后台保存，以便向其发送更新。*/
+#define SLAVE_STATE_WAIT_BGSAVE_START 6 /* We need to produce a new RDB file. 我们需要生成一个新的 RDB 文件。 */
+#define SLAVE_STATE_WAIT_BGSAVE_END 7 /* Waiting RDB file creation to finish. 正在等待RDB文件创建完成*/
+#define SLAVE_STATE_SEND_BULK 8 /* Sending RDB file to slave. 发送RDB文件去从节点*/
+#define SLAVE_STATE_ONLINE 9 /* RDB file transmitted, sending just updates. RDB文件已经传输完毕，只发送更新的部分*/
 
-/* Slave capabilities. */
+/* Slave capabilities. 从节点能力*/
 #define SLAVE_CAPA_NONE 0
-#define SLAVE_CAPA_EOF (1<<0)    /* Can parse the RDB EOF streaming format. */
-#define SLAVE_CAPA_PSYNC2 (1<<1) /* Supports PSYNC2 protocol. */
+#define SLAVE_CAPA_EOF (1<<0)    /* Can parse the RDB EOF streaming format.可以解析RDB EOF流格式 */
+#define SLAVE_CAPA_PSYNC2 (1<<1) /* Supports PSYNC2 protocol. 支持PSYNC2协议*/
 
-/* Synchronous read timeout - slave side */
+/* Synchronous read timeout - slave side 异步读超时时间，从节点配置*/
 #define CONFIG_REPL_SYNCIO_TIMEOUT 5
 
-/* List related stuff */
+/* List related stuff 一些相关的配置*/
 #define LIST_HEAD 0
 #define LIST_TAIL 1
 #define ZSET_MIN 0
@@ -349,12 +399,12 @@ extern int configOOMScoreAdjValuesDefaults[CONFIG_OOM_COUNT];
 /* Sort operations */
 #define SORT_OP_GET 0
 
-/* Log levels */
+/* Log levels 日志级别*/
 #define LL_DEBUG 0
 #define LL_VERBOSE 1
 #define LL_NOTICE 2
 #define LL_WARNING 3
-#define LL_RAW (1<<10) /* Modifier to log without timestamp */
+#define LL_RAW (1<<10) /* Modifier to log without timestamp 不带时间戳输出日志*/
 
 /* Supervision options */
 #define SUPERVISED_NONE 0
@@ -395,7 +445,9 @@ extern int configOOMScoreAdjValuesDefaults[CONFIG_OOM_COUNT];
 
 /* Redis maxmemory strategies. Instead of using just incremental number
  * for this defines, we use a set of flags so that testing for certain
- * properties common to multiple policies is faster. */
+ * properties common to multiple policies is faster. 
+ * Redis 最大内存策略。 我们使用一组标志而不是仅使用增量数字来定义，以便更快地测试多个策略共有的某些属性。
+ * */
 #define MAXMEMORY_FLAG_LRU (1<<0)
 #define MAXMEMORY_FLAG_LFU (1<<1)
 #define MAXMEMORY_FLAG_ALLKEYS (1<<2)
@@ -411,11 +463,11 @@ extern int configOOMScoreAdjValuesDefaults[CONFIG_OOM_COUNT];
 #define MAXMEMORY_ALLKEYS_RANDOM ((6<<8)|MAXMEMORY_FLAG_ALLKEYS)
 #define MAXMEMORY_NO_EVICTION (7<<8)
 
-/* Units */
+/* Units 单位 */
 #define UNIT_SECONDS 0
 #define UNIT_MILLISECONDS 1
 
-/* SHUTDOWN flags */
+/* SHUTDOWN flags 关闭标志*/
 #define SHUTDOWN_NOFLAGS 0      /* No flags. */
 #define SHUTDOWN_SAVE 1         /* Force SAVE on SHUTDOWN even if no save
                                    points are configured. */
@@ -437,10 +489,10 @@ extern int configOOMScoreAdjValuesDefaults[CONFIG_OOM_COUNT];
 #define PROPAGATE_AOF 1
 #define PROPAGATE_REPL 2
 
-/* RDB active child save type. */
+/* RDB active child save type. RDB 活动保存类型。*/
 #define RDB_CHILD_TYPE_NONE 0
-#define RDB_CHILD_TYPE_DISK 1     /* RDB is written to disk. */
-#define RDB_CHILD_TYPE_SOCKET 2   /* RDB is written to slave socket. */
+#define RDB_CHILD_TYPE_DISK 1     /* RDB is written to disk. RDB写入磁盘*/
+#define RDB_CHILD_TYPE_SOCKET 2   /* RDB is written to slave socket. RDB写入从节点*/
 
 /* Keyspace changes notification classes. Every class is associated with a
  * character for configuration purposes. */
@@ -459,15 +511,16 @@ extern int configOOMScoreAdjValuesDefaults[CONFIG_OOM_COUNT];
 #define NOTIFY_LOADED (1<<12)     /* module only key space notification, indicate a key loaded from rdb */
 #define NOTIFY_ALL (NOTIFY_GENERIC | NOTIFY_STRING | NOTIFY_LIST | NOTIFY_SET | NOTIFY_HASH | NOTIFY_ZSET | NOTIFY_EXPIRED | NOTIFY_EVICTED | NOTIFY_STREAM) /* A flag */
 
-/* Get the first bind addr or NULL */
+/* Get the first bind addr or NULL 获取第一个绑定的地址，或许为NULL*/
 #define NET_FIRST_BIND_ADDR (server.bindaddr_count ? server.bindaddr[0] : NULL)
 
 /* Using the following macro you can run code inside serverCron() with the
  * specified period, specified in milliseconds.
- * The actual resolution depends on server.hz. */
+ * The actual resolution depends on server.hz. 使用以下宏，您可以在 serverCron() 中以指定的时间段（以毫秒为单位）运行代码。 实际精度取决于 server.hz。*/
 #define run_with_period(_ms_) if ((_ms_ <= 1000/server.hz) || !(server.cronloops%((_ms_)/(1000/server.hz))))
 
-/* We can print the stacktrace, so our assert is defined this way: */
+/* We can print the stacktrace, so our assert is defined this way: 
+我们可以打印堆栈跟踪，所以我们的断言是这样定义的*/
 #define serverAssertWithInfo(_c,_o,_e) ((_e)?(void)0 : (_serverAssertWithInfo(_c,_o,#_e,__FILE__,__LINE__),_exit(1)))
 #define serverAssert(_e) ((_e)?(void)0 : (_serverAssert(#_e,__FILE__,__LINE__),_exit(1)))
 #define serverPanic(...) _serverPanic(__FILE__,__LINE__,__VA_ARGS__),_exit(1)
@@ -476,7 +529,7 @@ extern int configOOMScoreAdjValuesDefaults[CONFIG_OOM_COUNT];
  * Data types
  *----------------------------------------------------------------------------*/
 
-/* A redis object, that is a type able to hold a string / list / set */
+/* A redis object, that is a type able to hold a string / list / set 一个可以存放string/list/set 的redis对象 */
 
 /* The actual Redis Object */
 #define OBJ_STRING 0    /* String object. */
@@ -491,15 +544,25 @@ extern int configOOMScoreAdjValuesDefaults[CONFIG_OOM_COUNT];
  * handled by the module itself) and the RedisModuleType struct which lists
  * function pointers in order to serialize, deserialize, AOF-rewrite and
  * free the object.
+ * 
+ * “模块”对象类型是一种特殊的对象类型，
+ * 它表明该对象是由 Redis 模块直接管理的对象。 
+ * 在这种情况下，值指向一个 moduleValue 结构，该结构包含对象值（仅由模块本身处理）和 RedisModuleType 结构，
+ * 该结构列出了函数指针，以便序列化、反序列化、AOF 重写和释放对象。
  *
  * Inside the RDB file, module types are encoded as OBJ_MODULE followed
  * by a 64 bit module type ID, which has a 54 bits module-specific signature
  * in order to dispatch the loading to the right module, plus a 10 bits
- * encoding version. */
+ * encoding version. 
+ * 
+ * 在 RDB 文件中，模块类型编码为 OBJ_MODULE 后跟 64 位模块类型 ID，
+ * 它具有 54 位模块特定签名，以便将加载分派到正确的模块，加上 10 位编码版本。
+ * 
+ * */
 #define OBJ_MODULE 5    /* Module object. */
 #define OBJ_STREAM 6    /* Stream object. */
 
-/* Extract encver / signature from a module type ID. */
+/* Extract encver / signature from a module type ID. 从模块类型 ID 中提取 编码版本 / 签名 */
 #define REDISMODULE_TYPE_ENCVER_BITS 10
 #define REDISMODULE_TYPE_ENCVER_MASK ((1<<REDISMODULE_TYPE_ENCVER_BITS)-1)
 #define REDISMODULE_TYPE_ENCVER(id) (id & REDISMODULE_TYPE_ENCVER_MASK)
@@ -518,7 +581,9 @@ struct redisObject;
 /* Each module type implementation should export a set of methods in order
  * to serialize and deserialize the value in the RDB file, rewrite the AOF
  * log, create the digest for "DEBUG DIGEST", and free the value when a key
- * is deleted. */
+ * is deleted. 
+ * 每一个模块类型都应该实现一系列的方法去序列化和反序列化RDB文件的值，重写AOF日志，为"DEBUG DIGEST"创建摘要 和释放已经被删除的key值
+ * */
 typedef void *(*moduleTypeLoadFunc)(struct RedisModuleIO *io, int encver);
 typedef void (*moduleTypeSaveFunc)(struct RedisModuleIO *io, void *value);
 typedef int (*moduleTypeAuxLoadFunc)(struct RedisModuleIO *rdb, int encver, int when);
@@ -529,12 +594,16 @@ typedef size_t (*moduleTypeMemUsageFunc)(const void *value);
 typedef void (*moduleTypeFreeFunc)(void *value);
 
 /* A callback that is called when the client authentication changes. This
- * needs to be exposed since you can't cast a function pointer to (void *) */
+ * needs to be exposed since you can't cast a function pointer to (void *) 
+ 
+ 这是一个当客户端权限认证发生改变的时候执行的回调函数，
+ 这需要公开，因为您不能将函数指针强制转换为 (void *)*/
 typedef void (*RedisModuleUserChangedFunc) (uint64_t client_id, void *privdata);
 
 
 /* The module type, which is referenced in each value of a given type, defines
- * the methods and links to the module exporting the type. */
+ * the methods and links to the module exporting the type. 
+   在给定类型的每个值中引用的模块类型定义了导出该类型的模块的方法和链接。*/
 typedef struct RedisModuleType {
     uint64_t id; /* Higher 54 bits of type ID + 10 lower bits of encoding ver. */
     struct RedisModule *module;

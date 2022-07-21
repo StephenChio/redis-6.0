@@ -146,7 +146,7 @@ sds sdsnewlen(const void *init, size_t initlen) {
 }
 
 /* Create an empty (zero length) sds string. Even in this case the string
- * always has an implicit null term. */
+ * always has an implicit null term. 创建一个空（零长度）sds 字符串。 即使在这种情况下，字符串也总是有一个隐含的空项。 */
 sds sdsempty(void) {
     return sdsnewlen("",0);
 }

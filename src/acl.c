@@ -980,7 +980,8 @@ char *ACLSetUserStringError(void) {
 }
 
 /* Initialize the default user, that will always exist for all the process
- * lifetime. */
+ * lifetime.
+ 初始化默认用户，它会始终退出在程序运行的生命周期 */
 void ACLInitDefaultUser(void) {
     DefaultUser = ACLCreateUser("default",7);
     ACLSetUser(DefaultUser,"+@all",-1);
@@ -989,13 +990,13 @@ void ACLInitDefaultUser(void) {
     ACLSetUser(DefaultUser,"nopass",-1);
 }
 
-/* Initialization of the ACL subsystem. */
+/* Initialization of the ACL subsystem. 初始化ACL安全策略子系统*/
 void ACLInit(void) {
     Users = raxNew();
     UsersToLoad = listCreate();
     ACLLog = listCreate();
     ACLInitDefaultUser();
-    server.requirepass = NULL; /* Only used for backward compatibility. */
+    server.requirepass = NULL; /* Only used for backward compatibility. 仅用于向后兼容。*/
 }
 
 /* Check the username and password pair and return C_OK if they are valid,

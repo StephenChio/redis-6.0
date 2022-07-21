@@ -1127,7 +1127,7 @@ err:
     if (!log_to_stdout) close(fd);
 }
 
-/* Return the UNIX time in microseconds */
+/* Return the UNIX time in microseconds 返回unix时间的微秒值*/
 long long ustime(void) {
     struct timeval tv;
     long long ust;
@@ -1765,12 +1765,17 @@ void databasesCron(void) {
  * virtual memory and aging there is to store the current time in objects at
  * every object access, and accuracy is not needed. To access a global var is
  * a lot faster than calling time(NULL).
- *
+ * 我们在全局状态下获取unix时间的缓存值，因为随着虚拟内存和老化，
+ * 每次对象访问时都会将当前时间存储在对象中，并且不需要准确性。 访问全局变量比调用 time(NULL) 快得多。
  * This function should be fast because it is called at every command execution
  * in call(), so it is possible to decide if to update the daylight saving
  * info or not using the 'update_daylight_info' argument. Normally we update
  * such info only when calling this function from serverCron() but not when
- * calling it from call(). */
+ * calling it from call(). 
+ * 这个函数应该很快，因为它在 call() 中的每个命令执行时被调用，
+ * 因此可以决定是否更新夏令时信息或不使用 'update_daylight_info' 参数。
+ * 通常我们仅在从 serverCron() 调用此函数时更新此类信息，
+ * 而不是在从 call() 调用它时更新此类信息。*/
 void updateCachedTime(int update_daylight_info) {
     server.ustime = ustime();
     server.mstime = server.ustime / 1000;
@@ -1780,7 +1785,11 @@ void updateCachedTime(int update_daylight_info) {
      * localtime_r and cache the result. However calling localtime_r in this
      * context is safe since we will never fork() while here, in the main
      * thread. The logging function will call a thread safe version of
-     * localtime that has no locks. */
+     * localtime that has no locks. 
+     * 要获取有关夏令时的信息，我们需要调用 localtime_r 并缓存结果。 
+     * 但是在这种情况下调用 localtime_r 是安全的，
+     * 因为我们永远不会在主线程中 fork() 。 
+     * 日志记录函数将调用没有锁的本地时间线程安全版本*/
     if (update_daylight_info) {
         struct tm tm;
         time_t ut = server.unixtime;
@@ -2353,18 +2362,22 @@ void createSharedObjects(void) {
     shared.maxstring = sdsnew("maxstring");
 }
 
+// 为 `server` 数据结构设置默认值
 void initServerConfig(void) {
     int j;
-
+    //更新unix时间的缓存值
     updateCachedTime(1);
+    //获取一个随机Hex字符串作为服务器运行id
     getRandomHexChars(server.runid,CONFIG_RUN_ID_SIZE);
     server.runid[CONFIG_RUN_ID_SIZE] = '\0';
+    //用一个新的随机id改变当前实例的复制id 这会阻止主节点和从节点之间的数据同步
     changeReplicationId();
+    //清除（无效）辅助复制 ID。 例如，在完全重新同步之后，当我们开始新的复制时，就会发生这种情况
     clearReplicationId2();
     server.hz = CONFIG_DEFAULT_HZ; /* Initialize it ASAP, even if it may get
                                       updated later after loading the config.
                                       This value may be used before the server
-                                      is initialized. */
+                                      is initialized. 尽快初始化它，即使它可能会在加载配置后更新。该值可以在服务器初始化完成之前使用。*/
     server.timezone = getTimeZone(); /* Initialized by tzset(). */
     server.configfile = NULL;
     server.executable = NULL;
@@ -2398,6 +2411,7 @@ void initServerConfig(void) {
     memset(server.blocked_clients_by_type,0,
            sizeof(server.blocked_clients_by_type));
     server.shutdown_asap = 0;
+    //字符串复制
     server.cluster_configfile = zstrdup(CONFIG_DEFAULT_CLUSTER_CONFIG_FILE);
     server.cluster_module_flags = CLUSTER_MODULE_FLAG_NONE;
     server.migrate_cached_sockets = dictCreate(&migrateCacheDictType,NULL);
@@ -2406,12 +2420,12 @@ void initServerConfig(void) {
 
     server.lruclock = getLRUClock();
     resetServerSaveParams();
-
+    //服务器会在1分钟内有10000次改变或者5分钟内100次改变，或者1个小时内一次改变的时候进行追加保存
     appendServerSaveParams(60*60,1);  /* save after 1 hour and 1 change */
     appendServerSaveParams(300,100);  /* save after 5 minutes and 100 changes */
     appendServerSaveParams(60,10000); /* save after 1 minute and 10000 changes */
 
-    /* Replication related */
+    /* Replication related 主从复制的一些相关内容 */
     server.masterauth = NULL;
     server.masterhost = NULL;
     server.masterport = 6379;
@@ -2423,25 +2437,30 @@ void initServerConfig(void) {
     server.repl_transfer_fd = -1;
     server.repl_transfer_s = NULL;
     server.repl_syncio_timeout = CONFIG_REPL_SYNCIO_TIMEOUT;
-    server.repl_down_since = 0; /* Never connected, repl is down since EVER. */
+    server.repl_down_since = 0; /* Never connected, repl is down since EVER. 自从上次断开后从未连接*/
     server.master_repl_offset = 0;
 
-    /* Replication partial resync backlog */
+    /* Replication partial resync backlog 主从复制部分重新同步积压缓冲区配置*/
     server.repl_backlog = NULL;
     server.repl_backlog_histlen = 0;
     server.repl_backlog_idx = 0;
     server.repl_backlog_off = 0;
     server.repl_no_slaves_since = time(NULL);
 
-    /* Client output buffer limits */
+    /* Client output buffer limits 客户端输出缓冲区限制 */
+    /* {0, 0, 0}, normal
+     * {1024*1024*256, 1024*1024*64, 60}, slave
+     * {1024*1024*32, 1024*1024*8, 60}  pubsub
+     */
     for (j = 0; j < CLIENT_TYPE_OBUF_COUNT; j++)
         server.client_obuf_limits[j] = clientBufferLimitsDefaults[j];
 
     /* Linux OOM Score config */
+    //{ 0, 200, 800 }
     for (j = 0; j < CONFIG_OOM_COUNT; j++)
         server.oom_score_adj_values[j] = configOOMScoreAdjValuesDefaults[j];
 
-    /* Double constants initialization */
+    /* Double constants initialization 初始化双精度常量*/
     R_Zero = 0.0;
     R_PosInf = 1.0/R_Zero;
     R_NegInf = -1.0/R_Zero;
@@ -2449,7 +2468,10 @@ void initServerConfig(void) {
 
     /* Command table -- we initialize it here as it is part of the
      * initial configuration, since command names may be changed via
-     * redis.conf using the rename-command directive. */
+     * redis.conf using the rename-command directive. 
+     * 命令表——我们在这里对其进行初始化，因为它是初始配置的一部分，
+     * 命令名称可以通过 redis.conf 使用 rename-command 指令进行更改。
+     * */
     server.commands = dictCreate(&commandTableDictType,NULL);
     server.orig_commands = dictCreate(&commandTableDictType,NULL);
     populateCommandTable();
@@ -2468,7 +2490,7 @@ void initServerConfig(void) {
     server.xgroupCommand = lookupCommandByCString("xgroup");
     server.rpoplpushCommand = lookupCommandByCString("rpoplpush");
 
-    /* Debugging */
+    /* Debugging Debugging的一些配置*/
     server.assert_failed = "<no assertion failed>";
     server.assert_file = "<no file>";
     server.assert_line = 0;
@@ -2478,9 +2500,13 @@ void initServerConfig(void) {
     /* By default we want scripts to be always replicated by effects
      * (single commands executed by the script), and not by sending the
      * script to the slave / AOF. This is the new way starting from
-     * Redis 5. However it is possible to revert it via redis.conf. */
+     * Redis 5. However it is possible to revert it via redis.conf. 
+     * 默认情况下，我们希望脚本始终通过结果（脚本执行的单个命令）来复制，
+     * 而不是通过将脚本发送到从节点/AOF。 
+     * 这是从 Redis 5 开始的新方式。但是可以通过 redis.conf 恢复它。
+     * */
     server.lua_always_replicate_commands = 1;
-
+    //初始化系统配置默认值，在没有给配置文件的情况下
     initConfigValues();
 }
 
@@ -3126,7 +3152,8 @@ int populateCommandTableParseFlags(struct redisCommand *c, char *strflags) {
 }
 
 /* Populates the Redis Command Table starting from the hard coded list
- * we have on top of server.c file. */
+ * we have on top of server.c file. 
+   从我们在 server.c 文件顶部的硬编码列表开始填充 Redis 命令表。*/
 void populateCommandTable(void) {
     int j;
     int numcommands = sizeof(redisCommandTable)/sizeof(struct redisCommand);
@@ -5164,7 +5191,7 @@ void sendChildCOWInfo(int ptype, char *pname) {
 void memtest(size_t megabytes, int passes);
 
 /* Returns 1 if there is --sentinel among the arguments or if
- * argv[0] contains "redis-sentinel". */
+ * argv[0] contains "redis-sentinel". 如果参数中有 --sentinel 或 argv[0] 包含“redis-sentinel”，则返回 1。 */
 int checkForSentinelMode(int argc, char **argv) {
     int j;
 
@@ -5307,6 +5334,8 @@ int iAmMaster(void) {
             (server.cluster_enabled && nodeIsMaster(server.cluster->myself)));
 }
 
+
+/*主程序入库*/
 int main(int argc, char **argv) {
     struct timeval tv;
     int j;
@@ -5337,12 +5366,14 @@ int main(int argc, char **argv) {
     }
 #endif
 
-    /* We need to initialize our libraries, and the server configuration. */
+    /* We need to initialize our libraries, and the server configuration. 
+    我们需要初始化我们的库，和服务器的配置*/
 #ifdef INIT_SETPROCTITLE_REPLACEMENT
     spt_init(argc, argv);
 #endif
     setlocale(LC_COLLATE,"");
     tzset(); /* Populates 'timezone' global. */
+    //设置内存溢出处理器
     zmalloc_set_oom_handler(redisOutOfMemoryHandler);
     srand(time(NULL)^getpid());
     gettimeofday(&tv,NULL);
@@ -5352,29 +5383,38 @@ int main(int argc, char **argv) {
     /* Store umask value. Because umask(2) only offers a set-and-get API we have
      * to reset it and restore it back. We do this early to avoid a potential
      * race condition with threads that could be creating files or directories.
-     */
+    设置文件掩码值，赋予程序对文件的最高操作权限 */
     umask(server.umask = umask(0777));
 
     uint8_t hashseed[16];
+    //初始化一个随机hash种子
     getRandomBytes(hashseed,sizeof(hashseed));
     dictSetHashFunctionSeed(hashseed);
+    //检查是否是哨兵模式：如果参数中有 --sentinel 或 argv[0] 包含“redis-sentinel”，则返回 1。
     server.sentinel_mode = checkForSentinelMode(argc,argv);
+    // 为 `server` 数据结构设置默认值，设置配置默认值（没有配置文件的情况下的默认值）
     initServerConfig();
     ACLInit(); /* The ACL subsystem must be initialized ASAP because the
-                  basic networking code and client creation depends on it. */
+                  basic networking code and client creation depends on it.
+                  ACL安全策略子系统必须尽可能快的初始化，因为基础网络代码和客户端创建都需要用到 */
+    //初始化模块系统
     moduleInitModulesSystem();
     tlsInit();
 
     /* Store the executable path and arguments in a safe place in order
-     * to be able to restart the server later. */
+     * to be able to restart the server later. 
+       把可执行路径和参数保存在一个安全的地方以便于去稍后重新启动服务器
+     */
     server.executable = getAbsolutePath(argv[0]);
     server.exec_argv = zmalloc(sizeof(char*)*(argc+1));
     server.exec_argv[argc] = NULL;
-    for (j = 0; j < argc; j++) server.exec_argv[j] = zstrdup(argv[j]);
-
+    for (j = 0; j < argc; j++) {
+        server.exec_argv[j] = zstrdup(argv[j]);
+    }        
     /* We need to init sentinel right now as parsing the configuration file
      * in sentinel mode will have the effect of populating the sentinel
-     * data structures with master nodes to monitor. */
+     * data structures with master nodes to monitor. 
+     * 如果我们在哨兵模式下，我们还需要去初始化哨兵配置和哨兵*/
     if (server.sentinel_mode) {
         initSentinelConfig();
         initSentinel();
@@ -5382,18 +5422,22 @@ int main(int argc, char **argv) {
 
     /* Check if we need to start in redis-check-rdb/aof mode. We just execute
      * the program main. However the program is part of the Redis executable
-     * so that we can easily execute an RDB check on loading errors. */
+     * so that we can easily execute an RDB check on loading errors.
+     * 检查是否我们需要在redis-check-rdb/aof模式下启动，我们只是执行项目主程序，
+     * 但是该程序是Redis可执行程序的一部分，所以我们可以很容易在加载错误的情况下执行一个RDB检查
+     *  */
     if (strstr(argv[0],"redis-check-rdb") != NULL)
         redis_check_rdb_main(argc,argv,NULL);
     else if (strstr(argv[0],"redis-check-aof") != NULL)
         redis_check_aof_main(argc,argv);
 
+    //当参数数量大于等于2时候，说明至少有一个输入参数（排除命令本身）
     if (argc >= 2) {
         j = 1; /* First option to parse in argv[] */
         sds options = sdsempty();
         char *configfile = NULL;
 
-        /* Handle special options --help and --version */
+        /* Handle special options --help and --version 处理特殊选项，help和version*/
         if (strcmp(argv[1], "-v") == 0 ||
             strcmp(argv[1], "--version") == 0) version();
         if (strcmp(argv[1], "--help") == 0 ||
@@ -5409,12 +5453,15 @@ int main(int argc, char **argv) {
             }
         }
 
-        /* First argument is the config file name? */
+        /* First argument is the config file name? 第一个参数是否配置文件名称？*/
         if (argv[j][0] != '-' || argv[j][1] != '-') {
+            //如果第一个参数不以-或者--开头，那么我们认为它是配置文件的路径
             configfile = argv[j];
             server.configfile = getAbsolutePath(configfile);
             /* Replace the config file in server.exec_argv with
-             * its absolute path. */
+             * its absolute path.
+             * 把上面保存的对应参数替换成文件的绝对路径
+             */
             zfree(server.exec_argv[j]);
             server.exec_argv[j] = zstrdup(server.configfile);
             j++;
@@ -5423,30 +5470,36 @@ int main(int argc, char **argv) {
         /* All the other options are parsed and conceptually appended to the
          * configuration file. For instance --port 6380 will generate the
          * string "port 6380\n" to be parsed after the actual file name
-         * is parsed, if any. */
+         * is parsed, if any. 
+         * 其他输入的选项也会被解析追加到配置文件，
+         * 例如 --port 6380 会生成"port 6380\n" 字符串追加到真实解析的配置文件上
+         * 
+         * */
         while(j != argc) {
             if (argv[j][0] == '-' && argv[j][1] == '-') {
-                /* Option name */
+                /* Option name 如果是以--开头的参数，去除--添加到options*/
                 if (!strcmp(argv[j], "--check-rdb")) {
-                    /* Argument has no options, need to skip for parsing. */
+                    /* Argument has no options, need to skip for parsing.
+                    这个字段没有参数，需要跳过下一个进行解析 */
                     j++;
                     continue;
                 }
-                if (sdslen(options)) options = sdscat(options,"\n");
+                if (sdslen(options)) {
+                    options = sdscat(options,"\n");
+                }
                 options = sdscat(options,argv[j]+2);
                 options = sdscat(options," ");
             } else {
-                /* Option argument */
+                /* Option argument 如果 不是以--开头的参数，直接添加到 options */
                 options = sdscatrepr(options,argv[j],strlen(argv[j]));
                 options = sdscat(options," ");
             }
             j++;
         }
         if (server.sentinel_mode && configfile && *configfile == '-') {
-            serverLog(LL_WARNING,
-                "Sentinel config from STDIN not allowed.");
-            serverLog(LL_WARNING,
-                "Sentinel needs config file on disk to save state.  Exiting...");
+            //实例是哨兵模式，不允许通过命令行指定配置文件运行
+            serverLog(LL_WARNING,"Sentinel config from STDIN not allowed.");
+            serverLog(LL_WARNING,"Sentinel needs config file on disk to save state.  Exiting...");
             exit(1);
         }
         resetServerSaveParams();

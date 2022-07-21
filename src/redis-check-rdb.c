@@ -353,16 +353,26 @@ err:
 
 /* RDB check main: called form server.c when Redis is executed with the
  * redis-check-rdb alias, on during RDB loading errors.
- *
+ * RDB 检查主程序，当Redis用redis-check-rdb参数执行时被server.c调用
  * The function works in two ways: can be called with argc/argv as a
  * standalone executable, or called with a non NULL 'fp' argument if we
  * already have an open file to check. This happens when the function
  * is used to check an RDB preamble inside an AOF file.
  *
+ * 函数以2种方式进行工作：可以使用 argc/argv 作为独立的可执行文件调用，
+ * 或者如果我们已经有一个打开的文件要检查，则可以使用非 NULL的 'fp' 参数调用。 
+ * 当该函数用于检查 AOF 文件中的 RDB 前文时，就会发生这种情况。
+ * 
  * When called with fp = NULL, the function never returns, but exits with the
  * status code according to success (RDB is sane) or error (RDB is corrupted).
  * Otherwise if called with a non NULL fp, the function returns C_OK or
- * C_ERR depending on the success or failure. */
+ * C_ERR depending on the success or failure. 
+ * 
+ * 当使用 fp = NULL 调用时，函数永远不会返回，
+ * 而是根据成功（RDB 正常）或错误（RDB 已损坏）退出状态码。
+ * 否则，如果使用非 NULL fp 调用，函数返回 C_OK 或 C_ERR，具体取决于操作成败。
+ * 
+ * */
 int redis_check_rdb_main(int argc, char **argv, FILE *fp) {
     struct timeval tv;
 
@@ -376,7 +386,10 @@ int redis_check_rdb_main(int argc, char **argv, FILE *fp) {
 
     /* In order to call the loading functions we need to create the shared
      * integer objects, however since this function may be called from
-     * an already initialized Redis instance, check if we really need to. */
+     * an already initialized Redis instance, check if we really need to. 
+     * 为了调用加载函数，我们需要创建共享整型对象，
+     * 但是由于该函数可能会从已经初始化的 Redis 实例中调用，因此请检查我们是否真的需要。
+     * */
     if (shared.integers[0] == NULL)
         createSharedObjects();
     server.loading_process_events_interval_bytes = 0;

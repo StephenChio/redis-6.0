@@ -240,23 +240,24 @@ typedef struct sentinelRedisInstance {
 
 /* Main state. */
 struct sentinelState {
-    char myid[CONFIG_RUN_ID_SIZE+1]; /* This sentinel ID. */
+    char myid[CONFIG_RUN_ID_SIZE+1]; /* This sentinel ID. 哨兵id*/
     uint64_t current_epoch;         /* Current epoch. */
-    dict *masters;      /* Dictionary of master sentinelRedisInstances.
+    dict *masters;      /* Dictionary of master sentinelRedisInstances. 主哨兵 Redis 实例字典。
                            Key is the instance name, value is the
-                           sentinelRedisInstance structure pointer. */
-    int tilt;           /* Are we in TILT mode? */
-    int running_scripts;    /* Number of scripts in execution right now. */
-    mstime_t tilt_start_time;       /* When TITL started. */
-    mstime_t previous_time;         /* Last time we ran the time handler. */
-    list *scripts_queue;            /* Queue of user scripts to execute. */
+                           sentinelRedisInstance structure pointer. 
+                           Key 是实例名称，value 是 sentinelRedisInstance 结构指针*/
+    int tilt;           /* Are we in TILT mode? 是否在TILT模式*/
+    int running_scripts;    /* Number of scripts in execution right now. 现在需要去执行的脚本数量*/
+    mstime_t tilt_start_time;       /* When TITL started. TITL开始的时间*/
+    mstime_t previous_time;         /* Last time we ran the time handler. 上次我们运行处理程序的时候*/
+    list *scripts_queue;            /* Queue of user scripts to execute. 我们需要去执行的脚本队列*/
     char *announce_ip;  /* IP addr that is gossiped to other sentinels if
-                           not NULL. */
+                           not NULL. 如果不为 NULL，则将其传给其他哨兵的 IP 地址。*/
     int announce_port;  /* Port that is gossiped to other sentinels if
-                           non zero. */
-    unsigned long simfailure_flags; /* Failures simulation. */
+                           non zero. 如果不为 NULL，则将其传给其他哨兵的 端口。*/
+    unsigned long simfailure_flags; /* Failures simulation. 故障模拟*/
     int deny_scripts_reconfig; /* Allow SENTINEL SET ... to change script
-                                  paths at runtime? */
+                                  paths at runtime? 是否允许哨兵在运行的时候改变脚本路径*/
 } sentinel;
 
 /* A script execution job. */
@@ -467,18 +468,21 @@ struct redisCommand sentinelcmds[] = {
 };
 
 /* This function overwrites a few normal Redis config default with Sentinel
- * specific defaults. */
+ * specific defaults. 
+ 这个函数用 Sentinel 特定的默认值覆盖了一些普通的 Redis 配置默认值。
+ 设置覆盖端口为哨兵监听端口，保护模式设置为0，表示可以接收外部的请求*/
 void initSentinelConfig(void) {
     server.port = REDIS_SENTINEL_PORT;
     server.protected_mode = 0; /* Sentinel must be exposed. */
 }
 
-/* Perform the Sentinel mode initialization. */
+/* Perform the Sentinel mode initialization. 哨兵模式初始化*/
 void initSentinel(void) {
     unsigned int j;
 
     /* Remove usual Redis commands from the command table, then just add
-     * the SENTINEL command. */
+     * the SENTINEL command. 
+     移除平时的redis命令，添加哨兵命令*/
     dictEmpty(server.commands,NULL);
     for (j = 0; j < sizeof(sentinelcmds)/sizeof(sentinelcmds[0]); j++) {
         int retval;
@@ -488,12 +492,12 @@ void initSentinel(void) {
         serverAssert(retval == DICT_OK);
 
         /* Translate the command string flags description into an actual
-         * set of flags. */
+         * set of flags. 将命令字符串标志描述转换为一组实际的标志 */
         if (populateCommandTableParseFlags(cmd,cmd->sflags) == C_ERR)
             serverPanic("Unsupported command flag");
     }
 
-    /* Initialize various data structures. */
+    /* Initialize various data structures. 初始化各种数据*/
     sentinel.current_epoch = 0;
     sentinel.masters = dictCreate(&instancesDictType,NULL);
     sentinel.tilt = 0;
