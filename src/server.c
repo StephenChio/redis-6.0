@@ -5781,7 +5781,7 @@ int checkForSentinelMode(int argc, char **argv)
     return 0;
 }
 
-/* Function called at startup to load RDB or AOF file in memory. */
+/* Function called at startup to load RDB or AOF file in memory. 启动时调用的函数，用于在内存中加载 RDB 或 AOF 文件。*/
 void loadDataFromDisk(void)
 {
     long long start = ustime();
@@ -6247,7 +6247,9 @@ int main(int argc, char **argv)
         moduleLoadFromQueue();
         //配置ACL Access Control List（访问权限控制列表）（不能同时在配置文件和ACL文件配置ACL设置，否则可能出现漏洞）
         ACLLoadUsersAtStartup();
+        //有一些步骤需要在初始化之后在进行完成（在模块加载之后）
         InitServerLast();
+        //启动时调用的函数，用于在内存中加载 RDB 或 AOF 文件。
         loadDataFromDisk();
         if (server.cluster_enabled)
         {
@@ -6277,7 +6279,7 @@ int main(int argc, char **argv)
         }
     }
     else
-    {
+    { 
         InitServerLast();
         sentinelIsRunning();
         if (server.supervised_mode == SUPERVISED_SYSTEMD)
@@ -6287,7 +6289,7 @@ int main(int argc, char **argv)
         }
     }
 
-    /* Warning the user about suspicious maxmemory setting. */
+    /* Warning the user about suspicious maxmemory setting. 警告用户有关可疑的最大内存设置。小于1MB*/
     if (server.maxmemory > 0 && server.maxmemory < 1024 * 1024)
     {
         serverLog(LL_WARNING, "WARNING: You specified a maxmemory value that is less than 1MB (current value is %llu bytes). Are you sure this is what you really want?", server.maxmemory);
