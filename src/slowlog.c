@@ -110,7 +110,7 @@ void slowlogFreeEntry(void *septr) {
 }
 
 /* Initialize the slow log. This function should be called a single time
- * at server startup. */
+ * at server startup. 初始化慢日志。 此函数应在服务器启动时调用一次*/
 void slowlogInit(void) {
     server.slowlog = listCreate();
     server.slowlog_entry_id = 0;

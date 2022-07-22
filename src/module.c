@@ -4389,7 +4389,8 @@ void RM_LatencyAddSample(const char *event, mstime_t latency) {
 /* Readable handler for the awake pipe. We do nothing here, the awake bytes
  * will be actually read in a more appropriate place in the
  * moduleHandleBlockedClients() function that is where clients are actually
- * served. */
+ * served. 
+ * */
 void moduleBlockedClientPipeReadable(aeEventLoop *el, int fd, void *privdata, int mask) {
     UNUSED(el);
     UNUSED(fd);
@@ -7579,11 +7580,17 @@ void moduleInitModulesSystem(void) {
  * populated by `loadmodule` directives in the configuration file.
  * We can't load modules directly when processing the configuration file
  * because the server must be fully initialized before loading modules.
- *
+ * 
+ * 加载服务器中的所有模块。loadmodule_queue列表，由配置文件中的“loadmodule”指令填充。
+ * 在处理配置文件时，我们不能直接加载模块，因为在加载模块之前必须完全初始化服务器。
+ * 
  * The function aborts the server on errors, since to start with missing
  * modules is not considered sane: clients may rely on the existence of
  * given commands, loading AOF also may need some modules to exist, and
- * if this instance is a slave, it must understand commands from master. */
+ * if this instance is a slave, it must understand commands from master. 
+ * 该函数会在出现错误时中止服务器，因为从缺少的模块开始并不明智：
+ * 客户端可能依赖于给定命令的存在，加载AOF也可能需要一些模块才能存在，
+ * 如果该实例是从节点，则它必须理解来自主节点的命令*/
 void moduleLoadFromQueue(void) {
     listIter li;
     listNode *ln;

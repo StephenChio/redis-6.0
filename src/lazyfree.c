@@ -143,7 +143,8 @@ void freeSlotsToKeysMapAsync(rax *rt) {
 }
 
 /* Release objects from the lazyfree thread. It's just decrRefCount()
- * updating the count of objects to release. */
+ * updating the count of objects to release. 
+  从延迟释放线程释放对象。 使用 decrRefCount() 更新引用。引用为0才会真正释放*/
 void lazyfreeFreeObjectFromBioThread(robj *o) {
     decrRefCount(o);
     atomicDecr(lazyfree_objects,1);
@@ -151,7 +152,8 @@ void lazyfreeFreeObjectFromBioThread(robj *o) {
 
 /* Release a database from the lazyfree thread. The 'db' pointer is the
  * database which was substituted with a fresh one in the main thread
- * when the database was logically deleted. */
+ * when the database was logically deleted.
+ * 从延迟释放线程释放数据库 */
 void lazyfreeFreeDatabaseFromBioThread(dict *ht1, dict *ht2) {
     size_t numkeys = dictSize(ht1);
     dictRelease(ht1);
@@ -160,7 +162,8 @@ void lazyfreeFreeDatabaseFromBioThread(dict *ht1, dict *ht2) {
 }
 
 /* Release the radix tree mapping Redis Cluster keys to slots in the
- * lazyfree thread. */
+ * lazyfree thread. 将 Redis Cluster 键映射到槽的基数树释放
+ */
 void lazyfreeFreeSlotsMapFromBioThread(rax *rt) {
     size_t len = rt->numele;
     raxFree(rt);

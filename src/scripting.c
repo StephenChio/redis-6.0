@@ -1107,16 +1107,23 @@ void scriptingEnableGlobalsProtection(lua_State *lua) {
     sdsfree(code);
 }
 
-/* Initialize the scripting environment.
+/** Initialize the scripting environment.
+ * 初始化脚本环境
  *
  * This function is called the first time at server startup with
  * the 'setup' argument set to 1.
+ * 
+ * 这个函数只有当服务器启动的时候被调用，而且setup的值为1
  *
  * It can be called again multiple times during the lifetime of the Redis
  * process, with 'setup' set to 0, and following a scriptingRelease() call,
  * in order to reset the Lua scripting environment.
+ * 
+ * 在Redis运行的生命周期的不同时间都可以被调用，但是此时setup的值为0，而且scriptingRelease()语句只会在重置Lua脚本环境的时候被调用
  *
- * However it is simpler to just call scriptingReset() that does just that. */
+ * However it is simpler to just call scriptingReset() that does just that.
+ * 但是，仅调用执行此操作的 scriptingReset() 会更简单
+ *  */
 void scriptingInit(int setup) {
     lua_State *lua = lua_open();
 

@@ -40,19 +40,21 @@
 
 /* To improve the quality of the LRU approximation we take a set of keys
  * that are good candidate for eviction across freeMemoryIfNeeded() calls.
- *
+ * 为了提高 LRU 近似的质量，我们采用一组键 它们是 freeMemoryIfNeeded() 中调用标记的一些可以去清理的候选者 。
  * Entries inside the eviction pool are taken ordered by idle time, putting
  * greater idle times to the right (ascending order).
- *
+ * 驱逐池中的Entry按空闲时间排序，将更大的空闲时间放在右边（升序）。
  * When an LFU policy is used instead, a reverse frequency indication is used
  * instead of the idle time, so that we still evict by larger value (larger
  * inverse frequency means to evict keys with the least frequent accesses).
- *
+ * 当使用 LFU 策略时，使用反向频率指示来代替空闲时间，
+ * 因此我们仍然以较大的值判断是否需要移除key（较大的反向频率意味着移除最不频繁访问的key）
+ * 
  * Empty entries have the key pointer set to NULL. */
 #define EVPOOL_SIZE 16
 #define EVPOOL_CACHED_SDS_SIZE 255
 struct evictionPoolEntry {
-    unsigned long long idle;    /* Object idle time (inverse frequency for LFU) */
+    unsigned long long idle;    /* Object idle time (inverse frequency for LFU) 空闲时间，如果在LFU算法中取反向频率*/
     sds key;                    /* Key name. */
     sds cached;                 /* Cached SDS object for key name. */
     int dbid;                   /* Key DB number. */
@@ -117,25 +119,40 @@ unsigned long long estimateObjectIdleTime(robj *o) {
  *
  * LRU approximation algorithm
  *
+ * 近似LRU算法
+ * 
  * Redis uses an approximation of the LRU algorithm that runs in constant
  * memory. Every time there is a key to expire, we sample N keys (with
  * N very small, usually in around 5) to populate a pool of best keys to
  * evict of M keys (the pool size is defined by EVPOOL_SIZE).
- *
+ * 
+ * Redis使用了在固定内存中运行的近似LRU算法.每当有一个key过期的时候，我们采样N个key（N非常小，通常取5）
+ * 去填充key池，key池可以存放M个key（池的大小通常定义为EVPOOL_SIZE 16）
+ * 通俗的说就是每当有一个key过期都会收集5个key放到16个空间的key池里，一旦池子满了就要使用LRU算法移除最不常用的key
+ * 
  * The N keys sampled are added in the pool of good keys to expire (the one
  * with an old access time) if they are better than one of the current keys
  * in the pool.
+ * 
+ * 如果采样的N个密钥优于池中的当前密钥之一，则将其添加到密钥池中，以使其过期。
  *
  * After the pool is populated, the best key we have in the pool is expired.
  * However note that we don't remove keys from the pool when they are deleted
  * so the pool may contain keys that no longer exist.
+ * 
+ * 填充池后，池中的最佳密钥将过期。但是请注意，删除密钥时，我们不会从池中删除密钥，因此池中可能包含不再存在的密钥。
  *
  * When we try to evict a key, and all the entries in the pool don't exist
  * we populate it again. This time we'll be sure that the pool has at least
  * one key that can be evicted, if there is at least one key that can be
- * evicted in the whole database. */
+ * evicted in the whole database. 
+ * 
+ * 当我们想去驱逐一个key，但是key池里并没有数据，我们会对池子进行再次填充，
+ * 这一次，如果整个数据库中至少有一个键可以被驱逐，那么池子里一定会有它。
+ * 
+ * */
 
-/* Create a new eviction pool. */
+/* Create a new eviction pool. 创建一个驱逐池*/
 void evictionPoolAlloc(void) {
     struct evictionPoolEntry *ep;
     int j;

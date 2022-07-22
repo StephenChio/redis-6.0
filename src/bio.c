@@ -92,14 +92,16 @@ void lazyfreeFreeSlotsMapFromBioThread(zskiplist *sl);
  * main thread. */
 #define REDIS_THREAD_STACK_SIZE (1024*1024*4)
 
-/* Initialize the background system, spawning the thread. */
+/* Initialize the background system, spawning the thread. 
+初始阻塞线程*/
 void bioInit(void) {
     pthread_attr_t attr;
     pthread_t thread;
     size_t stacksize;
     int j;
 
-    /* Initialization of state vars and objects */
+    /* Initialization of state vars and objects 
+    状态变量和对象的初始化*/
     for (j = 0; j < BIO_NUM_OPS; j++) {
         pthread_mutex_init(&bio_mutex[j],NULL);
         pthread_cond_init(&bio_newjob_cond[j],NULL);
@@ -108,7 +110,8 @@ void bioInit(void) {
         bio_pending[j] = 0;
     }
 
-    /* Set the stack size as by default it may be small in some system */
+    /* Set the stack size as by default it may be small in some system 
+    将堆栈大小设置为默认情况下它在某些系统中可能很小*/
     pthread_attr_init(&attr);
     pthread_attr_getstacksize(&attr,&stacksize);
     if (!stacksize) stacksize = 1; /* The world is full of Solaris Fixes */
@@ -117,7 +120,14 @@ void bioInit(void) {
 
     /* Ready to spawn our threads. We use the single argument the thread
      * function accepts in order to pass the job ID the thread is
-     * responsible of. */
+     * responsible of. 
+     * 准备好生成我们的线程。 我们使用线程函数接受的单个参数来传递线程负责的作业 ID。*/
+    /**
+     * 启动3个阻塞线程来处理请求
+     * 0：处理文件关闭 （防止多线程关闭文件错误）
+     * 1：处理AOF同步
+     * 2：处理内存释放任务
+     * */
     for (j = 0; j < BIO_NUM_OPS; j++) {
         void *arg = (void*)(unsigned long) j;
         if (pthread_create(&thread,&attr,bioProcessBackgroundJobs,arg) != 0) {
@@ -169,10 +179,11 @@ void *bioProcessBackgroundJobs(void *arg) {
     redisSetCpuAffinity(server.bio_cpulist);
 
     makeThreadKillable();
-
+    //当我们拿到该线程的锁的时候才会开始
     pthread_mutex_lock(&bio_mutex[type]);
     /* Block SIGALRM so we are sure that only the main thread will
-     * receive the watchdog signal. */
+     * receive the watchdog signal. 
+     阻止 SIGALRM 以便我们确定只有主线程会收到看门狗信号 */
     sigemptyset(&sigset);
     sigaddset(&sigset, SIGALRM);
     if (pthread_sigmask(SIG_BLOCK, &sigset, NULL))
@@ -182,33 +193,41 @@ void *bioProcessBackgroundJobs(void *arg) {
     while(1) {
         listNode *ln;
 
-        /* The loop always starts with the lock hold. */
+        /* The loop always starts with the lock hold. 当我们拿到该线程的锁的时候才会开始*/
         if (listLength(bio_jobs[type]) == 0) {
+            //当目前没有可处理任务时，等待并释放锁
             pthread_cond_wait(&bio_newjob_cond[type],&bio_mutex[type]);
             continue;
         }
-        /* Pop the job from the queue. */
+        /* Pop the job from the queue. 从队列里拿出任务 */
         ln = listFirst(bio_jobs[type]);
         job = ln->value;
         /* It is now possible to unlock the background system as we know have
-         * a stand alone job structure to process.*/
+         * a stand alone job structure to process.
+         现在可以解锁后台系统，因为我们知道有一个独立的作业结构要处理。*/
         pthread_mutex_unlock(&bio_mutex[type]);
 
         /* Process the job accordingly to its type. */
         if (type == BIO_CLOSE_FILE) {
+            //我们收到的是一个文件关闭任务
             close((long)job->arg1);
         } else if (type == BIO_AOF_FSYNC) {
+            //我们收到的是一个AOF同步任务
             redis_fsync((long)job->arg1);
         } else if (type == BIO_LAZY_FREE) {
-            /* What we free changes depending on what arguments are set:
-             * arg1 -> free the object at pointer.
-             * arg2 & arg3 -> free two dictionaries (a Redis DB).
-             * only arg3 -> free the radix tree. */
+            /** What we free changes depending on what arguments are set:
+             * 我们处理的方式取决于接收到的参数数量
+             * arg1 -> free the object at pointer. 使用指针释放一个对象
+             * arg2 & arg3 -> free two dictionaries (a Redis DB). 释放两个字典(一个Redis数据库)
+             * only arg3 -> free the radix tree. 释放 基数树 */
             if (job->arg1)
+                //从延迟释放线程释放对象。 使用 decrRefCount() 更新引用。引用为0才会真正释放
                 lazyfreeFreeObjectFromBioThread(job->arg1);
             else if (job->arg2 && job->arg3)
+                //从延迟释放线程释放数据库
                 lazyfreeFreeDatabaseFromBioThread(job->arg2,job->arg3);
             else if (job->arg3)
+                //将 Redis Cluster 键映射到槽的基数树释放
                 lazyfreeFreeSlotsMapFromBioThread(job->arg3);
         } else {
             serverPanic("Wrong job type in bioProcessBackgroundJobs().");
@@ -216,12 +235,13 @@ void *bioProcessBackgroundJobs(void *arg) {
         zfree(job);
 
         /* Lock again before reiterating the loop, if there are no longer
-         * jobs to process we'll block again in pthread_cond_wait(). */
+         * jobs to process we'll block again in pthread_cond_wait(). 
+         在重复循环之前再次锁定，如果不再有作业要处理，我们将在 pthread_cond_wait() 中再次阻塞 */
         pthread_mutex_lock(&bio_mutex[type]);
         listDelNode(bio_jobs[type],ln);
         bio_pending[type]--;
 
-        /* Unblock threads blocked on bioWaitStepOfType() if any. */
+        /* Unblock threads blocked on bioWaitStepOfType() if any. 解除在 bioWaitStepOfType() 上阻塞的线程 */
         pthread_cond_broadcast(&bio_step_cond[type]);
     }
 }

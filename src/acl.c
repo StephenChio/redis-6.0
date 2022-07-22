@@ -1522,9 +1522,14 @@ cleanup:
  * loaded, and we are ready to start, in order to load the ACLs either from
  * the pending list of users defined in redis.conf, or from the ACL file.
  * The function will just exit with an error if the user is trying to mix
- * both the loading methods. */
+ * both the loading methods. 
+ * 一旦服务器已经运行，模块已经加载和我们准备开始的时候，
+ * 此函数就会被调用，为了从redis.conf中定义的待定用户列表或ACL文件中加载ACL
+ * 但是用户如果尝试通过2个地方同时加载ACL，则函数会返回错误并退出程序
+ * */
 void ACLLoadUsersAtStartup(void) {
     if (server.acl_filename[0] != '\0' && listLength(UsersToLoad) != 0) {
+        //不能同时在配置文件和ACL文件配置ACL设置，否则可能出现漏洞
         serverLog(LL_WARNING,
             "Configuring Redis with users defined in redis.conf and at "
             "the same setting an ACL file path is invalid. This setup "

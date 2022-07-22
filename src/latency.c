@@ -86,7 +86,8 @@ int THPGetAnonHugePagesSize(void) {
 
 /* Latency monitor initialization. We just need to create the dictionary
  * of time series, each time series is created on demand in order to avoid
- * having a fixed list to maintain. */
+ * having a fixed list to maintain. 
+ * 延迟监视器初始化。 我们只需要创建时间序列的字典，每个时间序列都是按需创建的，以避免有一个固定的列表需要维护。*/
 void latencyMonitorInit(void) {
     server.latency_events = dictCreate(&latencyTimeSeriesDictType,NULL);
 }

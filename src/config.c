@@ -360,7 +360,11 @@ void initConfigValues() {
         config->interface.init(config->data);
     }
 }
-
+/**
+ * @brief  覆盖默认配置文件
+ * 
+ * @param config 
+ */
 void loadServerConfigFromString(char *config) {
     char *err = NULL;
     int linenum = 0, totlines, i;
@@ -655,6 +659,7 @@ void loadServerConfig(char *filename, char *options) {
         config = sdscat(config,"\n");
         config = sdscat(config,options);
     }
+    /*覆盖默认配置文件*/
     loadServerConfigFromString(config);
     sdsfree(config);
 }

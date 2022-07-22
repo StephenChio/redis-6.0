@@ -63,7 +63,9 @@ int anetSetBlock(char *err, int fd, int non_block) {
 
     /* Set the socket blocking (if non_block is zero) or non-blocking.
      * Note that fcntl(2) for F_GETFL and F_SETFL can't be
-     * interrupted by a signal. */
+     * interrupted by a signal.
+     * 设置套接字阻塞（如果 non_block 为零）或非阻塞。 
+     * 请注意，F_GETFL 和 F_SETFL 的 fcntl(2) 不能被信号中断 */
     if ((flags = fcntl(fd, F_GETFL)) == -1) {
         anetSetError(err, "fcntl(F_GETFL): %s", strerror(errno));
         return ANET_ERR;

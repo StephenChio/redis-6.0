@@ -2896,7 +2896,7 @@ void refreshGoodSlavesCount(void) {
  *    in the master sometimes.
  */
 
-/* Initialize the script cache, only called at startup. */
+/* Initialize the script cache, only called at startup. 初始化脚本缓存，仅在启动时调用。*/
 void replicationScriptCacheInit(void) {
     server.repl_scriptcache_size = 10000;
     server.repl_scriptcache_dict = dictCreate(&replScriptCacheDictType,NULL);

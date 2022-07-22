@@ -451,6 +451,10 @@ void clusterUpdateMyselfFlags(void) {
     }
 }
 
+/**
+ * @brief 初始化集群
+ * 
+ */
 void clusterInit(void) {
     int saveconf = 0;
 
