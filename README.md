@@ -545,7 +545,7 @@ int listenToPort(int port, int *fds, int *count)
 具体的代码在initServer中
 
 ```c
-* Create an event handler for accepting new connections in TCP and Unix
+   /** Create an event handler for accepting new connections in TCP and Unix
      * domain sockets.
      * 创建一个事件处理程序以接受 TCP 和 Unix 域套接字中的新连接
      * 每绑定一个地址就创建一个事件处理器
