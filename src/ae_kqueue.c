@@ -147,11 +147,13 @@ static int aeApiPoll(aeEventLoop *eventLoop, struct timeval *tvp) {
 
         /* Normally we execute the read event first and then the write event.
          * When the barrier is set, we will do it reverse.
-         * 
+         * 通常我们先执行读取事件，然后执行写入事件。设置障碍后，我们将反向进行。
          * However, under kqueue, read and write events would be separate
          * events, which would make it impossible to control the order of
          * reads and writes. So we store the event's mask we've got and merge
-         * the same fd events later. */
+         * the same fd events later. 
+         * 但是在kqueue下，读写事件是独立的事件，这样就无法控制读写的顺序。
+         * 所以我们存储我们得到的事件掩码，稍后合并相同的 fd 事件*/
         for (j = 0; j < retval; j++) {
             struct kevent *e = state->events+j;
             int fd = e->ident;
@@ -163,7 +165,8 @@ static int aeApiPoll(aeEventLoop *eventLoop, struct timeval *tvp) {
         }
 
         /* Re-traversal to merge read and write events, and set the fd's mask to
-         * 0 so that events are not added again when the fd is encountered again. */
+         * 0 so that events are not added again when the fd is encountered again. 
+         重新遍历合并读写事件，并将fd的掩码设置为0，以便再次遇到fd时不再添加事件*/
         numevents = 0;
         for (j = 0; j < retval; j++) {
             struct kevent *e = state->events+j;

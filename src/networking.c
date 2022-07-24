@@ -934,7 +934,9 @@ void clientAcceptHandler(connection *conn) {
     /* If the server is running in protected mode (the default) and there
      * is no password set, nor a specific interface is bound, we don't accept
      * requests from non loopback interfaces. Instead we try to explain the
-     * user what to do to fix it if needed. */
+     * user what to do to fix it if needed. 
+     * 如果服务器运行在保护模式（默认）并且没有设置密码，也没有绑定特定的接口，
+     * 我们不接受来自非环回接口的请求。相反，我们尝试向用户解释如何在需要时修复它。*/
     if (server.protected_mode &&
         server.bindaddr_count == 0 &&
         DefaultUser->flags & USER_FLAG_NOPASS &&
@@ -1000,8 +1002,7 @@ static void acceptCommonHandler(connection *conn, int flags, char *ip) {
      * Admission control will happen before a client is created and connAccept()
      * called, because we don't want to even start transport-level negotiation
      * if rejected. */
-    if (listLength(server.clients) + getClusterConnectionsCount()
-        >= server.maxclients)
+    if (listLength(server.clients) + getClusterConnectionsCount() >= server.maxclients)
     {
         char *err;
         if (server.cluster_enabled)
@@ -1068,6 +1069,7 @@ void acceptTcpHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
                     "Accepting client connection: %s", server.neterr);
             return;
         }
+        printf("Accepted cfd:%d fd:%d addr:%s:%d\n",cfd,fd, cip, cport);
         serverLog(LL_VERBOSE,"Accepted %s:%d", cip, cport);
         acceptCommonHandler(connCreateAcceptedSocket(cfd),0,cip);
     }
@@ -1945,7 +1947,10 @@ int processPendingCommandsAndResetClient(client *c) {
 /* This function is called every time, in the client structure 'c', there is
  * more query buffer to process, because we read more data from the socket
  * or because a client was blocked and later reactivated, so there could be
- * pending query buffer, already representing a full command, to process. */
+ * pending query buffer, already representing a full command, to process. 
+ * 
+ * 每当客户端有需要处理的query buffer的时候都会调用此函数。
+ * */
 void processInputBuffer(client *c) {
     /* Keep processing while there is something in the input buffer */
     while(c->qb_pos < sdslen(c->querybuf)) {
@@ -2032,40 +2037,70 @@ void processInputBuffer(client *c) {
     }
 }
 
+/**
+ * @brief 从客户端读取数据
+ * 
+ * @param conn 
+ */
 void readQueryFromClient(connection *conn) {
+    printf("readQueryFromClient\n");
+    //从连接中获取客户端实例
     client *c = connGetPrivateData(conn);
     int nread, readlen;
     size_t qblen;
 
     /* Check if we want to read from the client later when exiting from
-     * the event loop. This is the case if threaded I/O is enabled. */
+     * the event loop. This is the case if threaded I/O is enabled. 
+     在退出事件循环时检查我们是否想稍后从客户端读取。如果启用了线程 I/O，就会出现这种情况。
+     */
     if (postponeClientRead(c)) return;
 
-    /* Update total number of reads on server */
+    /* Update total number of reads on server 
+    更新服务器处理的总数量 */
     server.stat_total_reads_processed++;
-
+    //通用I/O 缓冲区大小 默认16kb
     readlen = PROTO_IOBUF_LEN;
     /* If this is a multi bulk request, and we are processing a bulk reply
      * that is large enough, try to maximize the probability that the query
      * buffer contains exactly the SDS string representing the object, even
      * at the risk of requiring more read(2) calls. This way the function
      * processMultiBulkBuffer() can avoid copying buffers to create the
-     * Redis Object representing the argument. */
+     * Redis Object representing the argument. 
+     * 如果这是一个多批量请求，并且我们正在处理一个足够大的批量回复，
+     * 请尝试最大化查询缓冲区恰好包含表示对象的 SDS 字符串的概率，
+     * 即使可能需要更多的 read() 调用 . 
+     * 这样，函数 processMultiBulkBuffer() 可以避免复制缓冲区来创建表示参数的 Redis 对象。
+     * */
+    printf("c->reqtype:%d\n",c->reqtype);
     if (c->reqtype == PROTO_REQ_MULTIBULK && c->multibulklen && c->bulklen != -1
         && c->bulklen >= PROTO_MBULK_BIG_ARG)
     {
         ssize_t remaining = (size_t)(c->bulklen+2)-sdslen(c->querybuf);
 
         /* Note that the 'remaining' variable may be zero in some edge case,
-         * for example once we resume a blocked client after CLIENT PAUSE. */
-        if (remaining > 0 && remaining < readlen) readlen = remaining;
+         * for example once we resume a blocked client after CLIENT PAUSE. 
+         请注意，在某些情况下，“remaining”变量可能为零，例如：一旦我们在客户端暂停后恢复被阻塞的客户端*/
+        if (remaining > 0 && remaining < readlen) {
+            readlen = remaining;
+        }
     }
-
+    //获取已经读取的长度，作为偏移量加到下面connRead函数中，代表把读取的数据追加到后方
     qblen = sdslen(c->querybuf);
-    if (c->querybuf_peak < qblen) c->querybuf_peak = qblen;
+    if (c->querybuf_peak < qblen) {
+        //更新querybuf 大小的最近（100 毫秒或更多）峰值
+        c->querybuf_peak = qblen;
+    }
+    //我们扩大字符串的长度，以至于我们有足够的空间去读取新数据和存放结尾NULL符号
     c->querybuf = sdsMakeRoomFor(c->querybuf, readlen);
+    //从socket读取数据，把readlen长度的数据读取到c->querybuf+qblen的地址后
     nread = connRead(c->conn, c->querybuf+qblen, readlen);
+    /**
+     * 1.当read返回值大于0时，返回读到数据的实际字节数
+     * 2.返回值等于0时，表示读到文件末尾。
+     * 3.返回值小于0时，返回-1且设置errno
+     */
     if (nread == -1) {
+        //如果读取完了，
         if (connGetState(conn) == CONN_STATE_CONNECTED) {
             return;
         } else {
@@ -2080,15 +2115,26 @@ void readQueryFromClient(connection *conn) {
     } else if (c->flags & CLIENT_MASTER) {
         /* Append the query buffer to the pending (not applied) buffer
          * of the master. We'll use this buffer later in order to have a
-         * copy of the string applied by the last command executed. */
+         * copy of the string applied by the last command executed. 
+         * 将查询缓冲区附加到主节点的待处理缓冲区。
+         * 稍后我们将使用此缓冲区，以便获得最后的执行结果的副本。
+         * 这或许用于主从复制 */
         c->pending_querybuf = sdscatlen(c->pending_querybuf,
                                         c->querybuf+qblen,nread);
     }
-
+    /**
+     * 我们在上面扩容sds的操作中，使用了一个预分配的策略，
+     * 我们实际上会分配更多的空间（具体请看sdsMakeRoomFor），来避免读取数据时空间不足和污染内存，
+     * 那么此刻，我们已经得知nread为读取到的实际数量，那么我们就把长度重新修剪成真实的长度，并在最后方追加\0
+     * */
     sdsIncrLen(c->querybuf,nread);
+    //更新最后一次交互的时间
     c->lastinteraction = server.unixtime;
+    //如果是主节点，增加读取复制的偏移量
     if (c->flags & CLIENT_MASTER) c->read_reploff += nread;
+    //服务器统计信息
     server.stat_net_input_bytes += nread;
+    //如果读取到的总长度大于客户端查询缓冲区长度限制，那么我们会关闭客户端连接
     if (sdslen(c->querybuf) > server.client_max_querybuf_len) {
         sds ci = catClientInfoString(sdsempty(),c), bytes = sdsempty();
 
@@ -2101,7 +2147,8 @@ void readQueryFromClient(connection *conn) {
     }
 
     /* There is more data in the client input buffer, continue parsing it
-     * in case to check if there is a full command to execute. */
+     * in case to check if there is a full command to execute. 
+     客户端输入缓冲区中还有很多内容，继续解析以检查是否有完整的命令要执行。*/
      processInputBuffer(c);
 }
 
@@ -3071,7 +3118,9 @@ int io_threads_op;      /* IO_THREADS_OP_WRITE or IO_THREADS_OP_READ. */
 
 /* This is the list of clients each thread will serve when threaded I/O is
  * used. We spawn io_threads_num-1 threads, since one is the main thread
- * itself. */
+ * itself. 
+ * 当线程I/O被使用时，这是每个线程将服务的客户端列表
+ * 我们生成 io_threads_num-1 个线程，因为其中一个是主线程本身*/
 list *io_threads_list[IO_THREADS_MAX_NUM];
 
 void *IOThreadMain(void *myid) {
@@ -3112,6 +3161,7 @@ void *IOThreadMain(void *myid) {
             if (io_threads_op == IO_THREADS_OP_WRITE) {
                 writeToClient(c,0);
             } else if (io_threads_op == IO_THREADS_OP_READ) {
+                printf("3119\n");
                 readQueryFromClient(c->conn);
             } else {
                 serverPanic("io_threads_op value is unknown");
@@ -3362,6 +3412,7 @@ int handleClientsWithPendingReadsUsingThreads(void) {
     listRewind(io_threads_list[0],&li);
     while((ln = listNext(&li))) {
         client *c = listNodeValue(ln);
+        printf("3371\n");
         readQueryFromClient(c->conn);
     }
     listEmpty(io_threads_list[0]);

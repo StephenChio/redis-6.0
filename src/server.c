@@ -2753,8 +2753,11 @@ static void readOOMScoreAdj(void)
  * to user specified configuration. This is currently implemented on Linux
  * only.
  *
+ * 此函数将根据用户指定的配置配置当前进程的oom_score_adj。这目前仅在Linux上实现。（取值-1000-1000）-1000代表永远不会被kill
  * A process_class value of -1 implies OOM_CONFIG_MASTER or OOM_CONFIG_REPLICA,
  * depending on current role.
+ * 
+ * process_class值为-1表示OOM_CONFIG_MASTER或OOM_CONFIG_REPLICA，具体取决于当前角色。
  */
 int setOOMScoreAdj(int process_class)
 {
@@ -2944,13 +2947,20 @@ void checkTcpBacklogSettings(void)
  * contains no specific addresses to bind, this function will try to
  * bind * (all addresses) for both the IPv4 and IPv6 protocols.
  *
+ * 要绑定的地址在全局 server.bindaddr 数组中指定，它们的数量是 server.bindaddr_count。
+ * 如果服务器配置不包含要绑定的特定地址，此函数将尝试为 IPv4 和 IPv6 协议绑定 *（所有地址）。
+ * 
  * On success the function returns C_OK.
+ * 成功时，函数返回 C_OK。
  *
  * On error the function returns C_ERR. For the function to be on
  * error, at least one of the server.bindaddr addresses was
  * impossible to bind, or no bind addresses were specified in the server
  * configuration but the function is not able to bind * for at least
- * one of the IPv4 or IPv6 protocols. */
+ * one of the IPv4 or IPv6 protocols. 
+ * 出错时，函数返回 C_ERR。
+ * 要使函数出错，至少有一个 server.bindaddr 地址无法绑定，
+ * 或者在服务器配置中未指定绑定地址，但函数无法绑定 * IPv4 或 IPv6 协议中的至少一个。*/
 int listenToPort(int port, int *fds, int *count)
 {
     int j;
@@ -2971,6 +2981,7 @@ int listenToPort(int port, int *fds, int *count)
              为 IPv6 和 IPv4 绑定 *，仅当 server.bindaddr_count == 0 时才会进入这里*/
             fds[*count] = anetTcp6Server(server.neterr, port, NULL,
                                          server.tcp_backlog);
+            printf("bind Tcp6 * fd:%d\n",fds[*count]);                          
             if (fds[*count] != ANET_ERR)
             {
                 anetNonBlock(NULL, fds[*count]);
@@ -2987,6 +2998,7 @@ int listenToPort(int port, int *fds, int *count)
                 /* Bind the IPv4 address as well. */
                 fds[*count] = anetTcpServer(server.neterr, port, NULL,
                                             server.tcp_backlog);
+                printf("bind Tcp4 * fd:%d\n",fds[*count]);      
                 if (fds[*count] != ANET_ERR)
                 {
                     anetNonBlock(NULL, fds[*count]);
@@ -3220,10 +3232,10 @@ void initServer(void)
         listSetFreeMethod(server.db[j].defrag_later, (void (*)(void *))sdsfree);
     }
     //（1）redis采取的是LRU近似算法，也就是对keys进行采样，然后在采样结果中进行数据清理
-    　　 //（2）redis 3.0开始，在LRU近似算法中引入了pool机制，表现可以跟真正的LRU算法相当，但是还是有所差距的，不过这样可以减少内存的消耗
-　　 //（3）redis LRU算法，是采样之后再做LRU清理的，跟真正的、传统、全量的LRU算法是不太一样的
-　　                        //（4）maxmemory-samples，比如5，可以设置采样的大小，如果设置为10，那么效果会更好，不过也会耗费更多的CPU资源
-        evictionPoolAlloc(); /* Initialize the LRU keys pool. 初始化LRU keys 池，LRU（最近最少使用算法）算法使用*/
+    //（2）redis 3.0开始，在LRU近似算法中引入了pool机制，表现可以跟真正的LRU算法相当，但是还是有所差距的，不过这样可以减少内存的消耗
+    //（3）redis LRU算法，是采样之后再做LRU清理的，跟真正的、传统、全量的LRU算法是不太一样的
+    //（4）maxmemory-samples，比如5，可以设置采样的大小，如果设置为10，那么效果会更好，不过也会耗费更多的CPU资源
+    evictionPoolAlloc(); /* Initialize the LRU keys pool. 初始化LRU keys 池，LRU（最近最少使用算法）算法使用*/
     server.pubsub_channels = dictCreate(&keylistDictType, NULL);
     server.pubsub_patterns = listCreate();
     server.pubsub_patterns_dict = dictCreate(&keylistDictType, NULL);
@@ -3291,6 +3303,7 @@ void initServer(void)
      */
     for (j = 0; j < server.ipfd_count; j++)
     {
+        printf("aeCreateFileEvent:ipfd:%d\n",server.ipfd[j]);
         if (aeCreateFileEvent(server.el, server.ipfd[j], AE_READABLE, acceptTcpHandler, NULL) == AE_ERR)
         {
             serverPanic(
@@ -5940,7 +5953,7 @@ int iAmMaster(void)
             (server.cluster_enabled && nodeIsMaster(server.cluster->myself)));
 }
 
-/*主程序入库*/
+/*主程序入口*/
 int main(int argc, char **argv)
 {
     struct timeval tv;
@@ -6296,9 +6309,13 @@ int main(int argc, char **argv)
     }
 
     redisSetCpuAffinity(server.server_cpulist);
+    //此函数将根据用户指定的配置配置当前进程的oom_score_adj。这目前仅在Linux上实现。（取值-1000-1000）-1000代表永远不会被kill
+    //process_class值为-1表示OOM_CONFIG_MASTER或OOM_CONFIG_REPLICA，具体取决于当前角色。
     setOOMScoreAdj(-1);
 
+    //开启主事件循环，处理数据
     aeMain(server.el);
+    //释放所有事件循环
     aeDeleteEventLoop(server.el);
     return 0;
 }

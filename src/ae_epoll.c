@@ -106,6 +106,7 @@ static void aeApiDelEvent(aeEventLoop *eventLoop, int fd, int delmask) {
 }
 
 static int aeApiPoll(aeEventLoop *eventLoop, struct timeval *tvp) {
+    printf("epoll\n");
     aeApiState *state = eventLoop->apidata;
     int retval, numevents = 0;
 

@@ -181,6 +181,7 @@ static int connSocketWrite(connection *conn, const void *data, size_t data_len) 
 
 static int connSocketRead(connection *conn, void *buf, size_t buf_len) {
     int ret = read(conn->fd, buf, buf_len);
+    printf("connSocketRead:%s",buf);
     if (!ret) {
         conn->state = CONN_STATE_CLOSED;
     } else if (ret < 0 && errno != EAGAIN) {
@@ -238,7 +239,7 @@ static int connSocketSetWriteHandler(connection *conn, ConnectionCallbackFunc fu
  */
 static int connSocketSetReadHandler(connection *conn, ConnectionCallbackFunc func) {
     if (func == conn->read_handler) return C_OK;
-
+    printf("connSocketSetReadHandler\n");
     conn->read_handler = func;
     if (!conn->read_handler)
         aeDeleteFileEvent(server.el,conn->fd,AE_READABLE);
@@ -254,6 +255,7 @@ static const char *connSocketGetLastError(connection *conn) {
 
 static void connSocketEventHandler(struct aeEventLoop *el, int fd, void *clientData, int mask)
 {
+    printf("connSocketEventHandler\n");
     UNUSED(el);
     UNUSED(fd);
     connection *conn = clientData;

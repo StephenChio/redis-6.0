@@ -150,7 +150,7 @@ typedef long long ustime_t; /* microsecond time type. 微妙时间类型*/
 
 /* Protocol and I/O related defines 协议和I/O 相关定义 */
 #define PROTO_MAX_QUERYBUF_LEN  (1024*1024*1024) /* 1GB max query buffer. 1GB最大查询缓冲区*/
-#define PROTO_IOBUF_LEN         (1024*16)  /* Generic I/O buffer size *通用I/O 缓冲区大小 /
+#define PROTO_IOBUF_LEN         (1024*16)  /* Generic I/O buffer size 通用I/O 缓冲区大小 */
 #define PROTO_REPLY_CHUNK_BYTES (16*1024) /* 16k output buffer 16K输出缓冲区 */
 #define PROTO_INLINE_MAX_SIZE   (1024*64) /* Max size of inline reads 内联读取的最大大小*/
 #define PROTO_MBULK_BIG_ARG     (1024*32)
@@ -879,13 +879,13 @@ typedef struct client {
     int resp;               /* RESP protocol version. Can be 2 or 3. */
     redisDb *db;            /* Pointer to currently SELECTed DB. */
     robj *name;             /* As set by CLIENT SETNAME. */
-    sds querybuf;           /* Buffer we use to accumulate client queries. */
+    sds querybuf;           /* Buffer we use to accumulate client queries. 我们用来累积客户端查询的缓冲区。*/
     size_t qb_pos;          /* The position we have read in querybuf. */
     sds pending_querybuf;   /* If this client is flagged as master, this buffer
                                represents the yet not applied portion of the
                                replication stream that we are receiving from
                                the master. */
-    size_t querybuf_peak;   /* Recent (100ms or more) peak of querybuf size. */
+    size_t querybuf_peak;   /* Recent (100ms or more) peak of querybuf size. #querybuf 大小的最近（100 毫秒或更多）峰值。*/
     int argc;               /* Num of arguments of current command. */
     robj **argv;            /* Arguments of current command. */
     size_t argv_len_sum;    /* Sum of lengths of objects in argv list. */
@@ -894,14 +894,14 @@ typedef struct client {
                                user is set to NULL the connection can do
                                anything (admin). */
     int reqtype;            /* Request protocol type: PROTO_REQ_* */
-    int multibulklen;       /* Number of multi bulk arguments left to read. */
-    long bulklen;           /* Length of bulk argument in multi bulk request. */
+    int multibulklen;       /* Number of multi bulk arguments left to read. 剩下要读取的多批量参数的数量。*/
+    long bulklen;           /* Length of bulk argument in multi bulk request.多批量请求中的批量参数长度 */
     list *reply;            /* List of reply objects to send to the client. */
     unsigned long long reply_bytes; /* Tot bytes of objects in reply list. */
     size_t sentlen;         /* Amount of bytes already sent in the current
                                buffer or object being sent. */
     time_t ctime;           /* Client creation time. */
-    time_t lastinteraction; /* Time of the last interaction, used for timeout */
+    time_t lastinteraction; /* Time of the last interaction, used for timeout 最后一次交互的时间，用于超时*/
     time_t obuf_soft_limit_reached_time;
     uint64_t flags;         /* Client flags: CLIENT_* macros. */
     int authenticated;      /* Needed when the default user requires auth. */
@@ -911,7 +911,7 @@ typedef struct client {
     off_t repldboff;        /* Replication DB file offset. */
     off_t repldbsize;       /* Replication DB file size. */
     sds replpreamble;       /* Replication DB preamble. */
-    long long read_reploff; /* Read replication offset if this is a master. */
+    long long read_reploff; /* Read replication offset if this is a master. 如果这是主节点，则读取复制偏移量。*/
     long long reploff;      /* Applied replication offset if this is a master. */
     long long repl_ack_off; /* Replication ack offset, if this is a slave. */
     long long repl_ack_time;/* Replication ack time, if this is a slave. */
@@ -1291,7 +1291,7 @@ struct redisServer {
     int active_defrag_cycle_min;       /* minimal effort for defrag in CPU percentage */
     int active_defrag_cycle_max;       /* maximal effort for defrag in CPU percentage */
     unsigned long active_defrag_max_scan_fields; /* maximum number of fields of set/hash/zset/list to process from within the main dict scan */
-    _Atomic size_t client_max_querybuf_len; /* Limit for client query buffer length */
+    _Atomic size_t client_max_querybuf_len; /* Limit for client query buffer length 客户端查询缓冲区长度限制*/
     int dbnum;                      /* Total number of configured DBs 已配置 DB 总数 */
     int supervised;                 /* 1 if supervised, 0 otherwise. */
     int supervised_mode;            /* See SUPERVISED_* */
@@ -1564,10 +1564,10 @@ struct redisServer {
     int tls_auth_clients;
     redisTLSContextConfig tls_ctx_config;
     /* cpu affinity */
-    char *server_cpulist; /* cpu affinity list of redis server main/io thread. */
-    char *bio_cpulist; /* cpu affinity list of bio thread. */
-    char *aof_rewrite_cpulist; /* cpu affinity list of aof rewrite process. */
-    char *bgsave_cpulist; /* cpu affinity list of bgsave process. */
+    char *server_cpulist; /* cpu affinity list of redis server main/io thread. redis服务器主/io线程的cpu相关性列表*/
+    char *bio_cpulist; /* cpu affinity list of bio thread. #bio线程的cpu相关性列表*/
+    char *aof_rewrite_cpulist; /* cpu affinity list of aof rewrite process. #aof重写进程的cpu相关性列表*/
+    char *bgsave_cpulist; /* cpu affinity list of bgsave process. #bgsave进程的cpu相关性列表*/
 };
 
 typedef struct pubsubPattern {

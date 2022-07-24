@@ -1,3 +1,971 @@
+# Redis
+
+想要学习Redis工作方式，最好的方式就是了解它的线程模型，它究竟是如何接受请求，如何处理请求，它究竟是传说中的单线程工作还是多线程，让我们来一探究竟。
+
+### main()
+
+redis启动函数是server.c文件的最后一个函数
+
+```c
+*主程序入口*/
+int main(int argc, char **argv)
+{
+    struct timeval tv;
+    int j;
+
+#ifdef REDIS_TEST
+    if (argc == 3 && !strcasecmp(argv[1], "test"))
+    {
+        if (!strcasecmp(argv[2], "ziplist"))
+        {
+            return ziplistTest(argc, argv);
+        }
+        else if (!strcasecmp(argv[2], "quicklist"))
+        {
+            quicklistTest(argc, argv);
+        }
+        else if (!strcasecmp(argv[2], "intset"))
+        {
+            return intsetTest(argc, argv);
+        }
+        else if (!strcasecmp(argv[2], "zipmap"))
+        {
+            return zipmapTest(argc, argv);
+        }
+        else if (!strcasecmp(argv[2], "sha1test"))
+        {
+            return sha1Test(argc, argv);
+        }
+        else if (!strcasecmp(argv[2], "util"))
+        {
+            return utilTest(argc, argv);
+        }
+        else if (!strcasecmp(argv[2], "endianconv"))
+        {
+            return endianconvTest(argc, argv);
+        }
+        else if (!strcasecmp(argv[2], "crc64"))
+        {
+            return crc64Test(argc, argv);
+        }
+        else if (!strcasecmp(argv[2], "zmalloc"))
+        {
+            return zmalloc_test(argc, argv);
+        }
+
+        return -1; /* test not found */
+    }
+#endif
+
+    /* We need to initialize our libraries, and the server configuration.
+    我们需要初始化我们的库，和服务器的配置*/
+#ifdef INIT_SETPROCTITLE_REPLACEMENT
+    spt_init(argc, argv);
+#endif
+    setlocale(LC_COLLATE, "");
+    tzset(); /* Populates 'timezone' global. */
+    //设置内存溢出处理器
+    zmalloc_set_oom_handler(redisOutOfMemoryHandler);
+    srand(time(NULL) ^ getpid());
+    gettimeofday(&tv, NULL);
+    init_genrand64(((long long)tv.tv_sec * 1000000 + tv.tv_usec) ^ getpid());
+    crc64_init();
+
+    /* Store umask value. Because umask(2) only offers a set-and-get API we have
+     * to reset it and restore it back. We do this early to avoid a potential
+     * race condition with threads that could be creating files or directories.
+    设置文件掩码值，赋予程序对文件的最高操作权限 */
+    umask(server.umask = umask(0777));
+
+    uint8_t hashseed[16];
+    //初始化一个随机hash种子
+    getRandomBytes(hashseed, sizeof(hashseed));
+    dictSetHashFunctionSeed(hashseed);
+    //检查是否是哨兵模式：如果参数中有 --sentinel 或 argv[0] 包含“redis-sentinel”，则返回 1。
+    server.sentinel_mode = checkForSentinelMode(argc, argv);
+    // 为 `server` 数据结构设置默认值，设置配置默认值（没有配置文件的情况下的默认值）
+    initServerConfig();
+    ACLInit(); /* The ACL subsystem must be initialized ASAP because the
+                  basic networking code and client creation depends on it.
+                  ACL安全策略子系统必须尽可能快的初始化，因为基础网络代码和客户端创建都需要用到 */
+    //初始化模块系统
+    moduleInitModulesSystem();
+    tlsInit();
+
+    /* Store the executable path and arguments in a safe place in order
+     * to be able to restart the server later.
+       把可执行路径和参数保存在一个安全的地方以便于去稍后重新启动服务器
+     */
+    server.executable = getAbsolutePath(argv[0]);
+    server.exec_argv = zmalloc(sizeof(char *) * (argc + 1));
+    server.exec_argv[argc] = NULL;
+    for (j = 0; j < argc; j++)
+    {
+        server.exec_argv[j] = zstrdup(argv[j]);
+    }
+    /* We need to init sentinel right now as parsing the configuration file
+     * in sentinel mode will have the effect of populating the sentinel
+     * data structures with master nodes to monitor.
+     * 如果我们在哨兵模式下，我们还需要去初始化哨兵配置和哨兵*/
+    if (server.sentinel_mode)
+    {
+        initSentinelConfig();
+        initSentinel();
+    }
+
+    /* Check if we need to start in redis-check-rdb/aof mode. We just execute
+     * the program main. However the program is part of the Redis executable
+     * so that we can easily execute an RDB check on loading errors.
+     * 检查是否我们需要在redis-check-rdb/aof模式下启动，我们只是执行项目主程序，
+     * 但是该程序是Redis可执行程序的一部分，所以我们可以很容易在加载错误的情况下执行一个RDB检查
+     *  */
+    if (strstr(argv[0], "redis-check-rdb") != NULL)
+        redis_check_rdb_main(argc, argv, NULL);
+    else if (strstr(argv[0], "redis-check-aof") != NULL)
+        redis_check_aof_main(argc, argv);
+
+    //当参数数量大于等于2时候，说明至少有一个输入参数（排除命令本身）
+    if (argc >= 2)
+    {
+        j = 1; /* First option to parse in argv[] */
+        sds options = sdsempty();
+        char *configfile = NULL;
+
+        /* Handle special options --help and --version 处理特殊选项，help和version*/
+        if (strcmp(argv[1], "-v") == 0 ||
+            strcmp(argv[1], "--version") == 0)
+            version();
+        if (strcmp(argv[1], "--help") == 0 ||
+            strcmp(argv[1], "-h") == 0)
+            usage();
+        if (strcmp(argv[1], "--test-memory") == 0)
+        {
+            if (argc == 3)
+            {
+                memtest(atoi(argv[2]), 50);
+                exit(0);
+            }
+            else
+            {
+                fprintf(stderr, "Please specify the amount of memory to test in megabytes.\n");
+                fprintf(stderr, "Example: ./redis-server --test-memory 4096\n\n");
+                exit(1);
+            }
+        }
+
+        /* First argument is the config file name? 第一个参数是否配置文件名称？*/
+        if (argv[j][0] != '-' || argv[j][1] != '-')
+        {
+            //如果第一个参数不以-或者--开头，那么我们认为它是配置文件的路径
+            configfile = argv[j];
+            server.configfile = getAbsolutePath(configfile);
+            /* Replace the config file in server.exec_argv with
+             * its absolute path.
+             * 把上面保存的对应参数替换成文件的绝对路径
+             */
+            zfree(server.exec_argv[j]);
+            server.exec_argv[j] = zstrdup(server.configfile);
+            j++;
+        }
+
+        /* All the other options are parsed and conceptually appended to the
+         * configuration file. For instance --port 6380 will generate the
+         * string "port 6380\n" to be parsed after the actual file name
+         * is parsed, if any.
+         * 其他输入的选项也会被解析追加到配置文件，
+         * 例如 --port 6380 会生成"port 6380\n" 字符串追加到真实解析的配置文件上
+         *
+         * */
+        while (j != argc)
+        {
+            if (argv[j][0] == '-' && argv[j][1] == '-')
+            {
+                /* Option name 如果是以--开头的参数，去除--添加到options*/
+                if (!strcmp(argv[j], "--check-rdb"))
+                {
+                    /* Argument has no options, need to skip for parsing.
+                    这个字段没有参数，需要跳过下一个进行解析 */
+                    j++;
+                    continue;
+                }
+                if (sdslen(options))
+                {
+                    options = sdscat(options, "\n");
+                }
+                options = sdscat(options, argv[j] + 2);
+                options = sdscat(options, " ");
+            }
+            else
+            {
+                /* Option argument 如果 不是以--开头的参数，直接添加到 options */
+                options = sdscatrepr(options, argv[j], strlen(argv[j]));
+                options = sdscat(options, " ");
+            }
+            j++;
+        }
+        if (server.sentinel_mode && configfile && *configfile == '-')
+        {
+            //实例是哨兵模式，不允许通过命令行指定配置文件运行
+            serverLog(LL_WARNING, "Sentinel config from STDIN not allowed.");
+            serverLog(LL_WARNING, "Sentinel needs config file on disk to save state.  Exiting...");
+            exit(1);
+        }
+        //当我们进入到这里的时候，说明我们配置了一些参数，
+        //我们把之前设置的RDB更新策略重置，后面可以根据您给的配置或者默认配置进行再次设置。
+        resetServerSaveParams();
+        //加载配置文件，如果configfile为空则加载默认配置，options是命令行输入的配置，优先级高于配置文件中的设置
+        // options会把配置文件中同样的项覆盖
+        loadServerConfig(configfile, options);
+        sdsfree(options);
+    }
+    //判断是否是监视者模式
+    server.supervised = redisIsSupervised(server.supervised_mode);
+    //如果不是监视者模式，而且开启了后台运行，那么我们开启守护进程
+    int background = server.daemonize && !server.supervised;
+    if (background)
+        daemonize();
+
+    serverLog(LL_WARNING, "oO0OoO0OoO0Oo Redis is starting oO0OoO0OoO0Oo");
+    serverLog(LL_WARNING,
+              "Redis version=%s, bits=%d, commit=%s, modified=%d, pid=%d, just started",
+              REDIS_VERSION,
+              (sizeof(long) == 8) ? 64 : 32,
+              redisGitSHA1(),
+              strtol(redisGitDirty(), NULL, 10) > 0,
+              (int)getpid());
+
+    if (argc == 1)
+    {
+        //如果没有配置任何参数，那么配置文件就是使用默认配置文件
+        serverLog(LL_WARNING, "Warning: no config file specified, using the default config. In order to specify a config file use %s /path/to/%s.conf", argv[0], server.sentinel_mode ? "sentinel" : "redis");
+    }
+    else
+    {
+        serverLog(LL_WARNING, "Configuration loaded");
+    }
+    // 此功能可使Redis根据其进程主动控制其所有进程的oom_score_adj值
+    // oom_score_adj 的取值范围是 -1000～1000,如果设置成-1000，操作系统将不会kill该程序
+    readOOMScoreAdj();
+    //初始化服务器一些配置，以及创建事件循环
+    initServer();
+    if (background || server.pidfile)
+        createPidFile();
+    redisSetProcTitle(argv[0]);
+    //打印Ascii图标
+    redisAsciiArt();
+    //根据 /proc/sys/net/core/somaxconn 的值，检查 server.tcp_backlog 是否可以在 Linux 中实际执行，或者警告它。
+    /**
+     * 　　对于一个TCP连接，Server与Client需要通过三次握手来建立网络连接.当三次握手成功后,
+     * 我们可以看到端口的状态由LISTEN转变为ESTABLISHED,接着这条链路上就可以开始传送数据了.
+     * 每一个处于监听(Listen)状态的端口,都有自己的监听队列.监听队列的长度,与如下两方面有关:
+     * - somaxconn参数.
+     * - 使用该端口的程序中listen()函数.
+     * 
+     * 关于somaxconn参数:
+     * 定义了系统中每一个端口最大的监听队列的长度,这是个全局的参数,默认值为128.
+     * 限制了每个端口接收新tcp连接侦听队列的大小。
+     * 对于一个经常处理新连接的高负载 web服务环境来说，默认的 128 太小了。
+     * 大多数环境这个值建议增加到 1024 或者更多。 
+     * 服务进程会自己限制侦听队列的大小(例如 sendmail(8) 或者 Apache)，
+     * 常常在它们的配置文件中有设置队列大小的选项。大的侦听队列对防止拒绝服务 DoS 攻击也会有所帮助。
+     */
+    checkTcpBacklogSettings();
+    //实例是否是哨兵模式
+    if (!server.sentinel_mode)
+    {
+        //非哨兵模式
+        /* Things not needed when running in Sentinel mode. */
+        serverLog(LL_WARNING, "Server initialized");
+#ifdef __linux__
+        /**
+         * 
+         * 判断 vm.overcommit_memory 是否为1或者2，如果为0 打印警告日志
+         * 0：表示内核将检查是否有足够的可用内存供应用进程使用；如果有足够的可用内存，内存申请允许；否则，内存申请失败，并把错误返回给应用进程。
+         * 1：表示内核允许分配所有的物理内存，而不管当前的内存状态如何。
+         * 2：表示内核允许分配超过所有物理内存和交换空间总和的内存。
+         * 
+         */
+        linuxMemoryWarnings();
+#if defined(__arm64__)
+        int ret;
+        /**
+         * 旧的arm64 Linux内核有一个bug，在某些情况下，在后台保存期间可能会导致数据损坏。
+         * 此函数检查内核是否受到影响。测试失败时返回-1，如果内核似乎受到影响，则返回1，否则返回
+         * 
+         */
+        if ((ret = linuxMadvFreeForkBugCheck()))
+        {
+            if (ret == 1)
+                serverLog(LL_WARNING, "WARNING Your kernel has a bug that could lead to data corruption during background save. "
+                                      "Please upgrade to the latest stable kernel.");
+            else
+                serverLog(LL_WARNING, "Failed to test the kernel for a bug that could lead to data corruption during background save. "
+                                      "Your system could be affected, please report this error.");
+            if (!checkIgnoreWarning("ARM64-COW-BUG"))
+            {
+                serverLog(LL_WARNING, "Redis will now exit to prevent data corruption. "
+                                      "Note that it is possible to suppress this warning by setting the following config: ignore-warnings ARM64-COW-BUG");
+                exit(1);
+            }
+        }
+#endif /* __arm64__ */
+#endif /* __linux__ */
+        //加载服务器中的所有模块
+        moduleLoadFromQueue();
+        //配置ACL Access Control List（访问权限控制列表）（不能同时在配置文件和ACL文件配置ACL设置，否则可能出现漏洞）
+        ACLLoadUsersAtStartup();
+        //有一些步骤需要在初始化之后在进行完成（在模块加载之后）
+        InitServerLast();
+        //启动时调用的函数，用于在内存中加载 RDB 或 AOF 文件。
+        loadDataFromDisk();
+        if (server.cluster_enabled)
+        {
+            if (verifyClusterConfigWithData() == C_ERR)
+            {
+                serverLog(LL_WARNING,
+                          "You can't have keys in a DB different than DB 0 when in "
+                          "Cluster mode. Exiting.");
+                exit(1);
+            }
+        }
+        if (server.ipfd_count > 0 || server.tlsfd_count > 0)
+            serverLog(LL_NOTICE, "Ready to accept connections");
+        if (server.sofd > 0)
+            serverLog(LL_NOTICE, "The server is now ready to accept connections at %s", server.unixsocket);
+        if (server.supervised_mode == SUPERVISED_SYSTEMD)
+        {
+            if (!server.masterhost)
+            {
+                redisCommunicateSystemd("STATUS=Ready to accept connections\n");
+                redisCommunicateSystemd("READY=1\n");
+            }
+            else
+            {
+                redisCommunicateSystemd("STATUS=Waiting for MASTER <-> REPLICA sync\n");
+            }
+        }
+    }
+    else
+    { 
+        InitServerLast();
+        sentinelIsRunning();
+        if (server.supervised_mode == SUPERVISED_SYSTEMD)
+        {
+            redisCommunicateSystemd("STATUS=Ready to accept connections\n");
+            redisCommunicateSystemd("READY=1\n");
+        }
+    }
+
+    /* Warning the user about suspicious maxmemory setting. 警告用户有关可疑的最大内存设置。小于1MB*/
+    if (server.maxmemory > 0 && server.maxmemory < 1024 * 1024)
+    {
+        serverLog(LL_WARNING, "WARNING: You specified a maxmemory value that is less than 1MB (current value is %llu bytes). Are you sure this is what you really want?", server.maxmemory);
+    }
+
+    redisSetCpuAffinity(server.server_cpulist);
+    //此函数将根据用户指定的配置配置当前进程的oom_score_adj。这目前仅在Linux上实现。（取值-1000-1000）-1000代表永远不会被kill
+    //process_class值为-1表示OOM_CONFIG_MASTER或OOM_CONFIG_REPLICA，具体取决于当前角色。
+    setOOMScoreAdj(-1);
+
+    //开启主事件循环，处理数据
+    aeMain(server.el);
+    //释放所有事件循环
+    aeDeleteEventLoop(server.el);
+    return 0;
+}
+
+```
+
+从代码中有几个重要的点需要注意：
+
+1.redis启动命令的第二个参数，如果不以-或者--开头，redis默认认为是配置文件参数，那么它就会通过该参数寻找配置文件，如果出错，则程序会启动失败
+
+2.redis并没有去默认文件路径寻找配置文件，它的默认配置是写到了redis代码里的，如果你没有指定配置文件，那么它只会根据代码内容初始化配置文件。所谓的默认配置文件，只是它的内容和redis代码里的默认配置是一致的，仅此而已。
+
+3.redis 6.0之后支持了多线程I/O处理客户的信息，但是默认情况下是不开启的，（可能是为了兼容之前运行Redis的单核或者双核CPU服务器）如果需要开启，则需要指定配置文件运行，并且做了相应的配置。在4核cpu以上的机器上，官方都建议我们开启多线程I/O，可以有效提升性能。
+
+4.Redis在linux机器上建议我们去使用vm.overcommit_memory=1这个配置。意味着"表示内核允许分配所有的物理内存，而不管当前的内存状态如何"，对于Redis这个内存数据库来说，这是它愿意去看到的，但是我们在生产环节上也遇到过一些问题：在运行了k8s集群的机器上（需要强制linux系统关闭 swap（内存交换）来提升性能，避免频繁与硬盘进行内存交换），如果还运行了Redis，那么在高负荷的工作条件下，可能会把物理机器的内存耗尽到不可恢复的状态。
+
+
+
+### 初始化默认配置
+
+```c
+void initConfigValues() {
+​    for (standardConfig *config = configs; config->name != NULL; config++) {
+​        config->interface.init(config->data);
+​    }
+}
+```
+
+Redis通过调用init函数指针来为每一个不同数据类型的配置进行初始化，它里面是通过宏替换进行数据结构初始化，过程比较复杂就不展开说了，也没有特别难懂，可以亲自到源代码感受一下。
+
+
+
+### 绑定地址和端口
+
+Redis绑定地址和端口的逻辑在main函数中的initServer函数里。当绑定地址和端口失败则退出。
+
+```c
+ /* Open the TCP listening socket for the user commands. 为用户命令打开TCP监听socket */
+
+​    if (server.port != 0 && listenToPort(server.port, server.ipfd, &server.ipfd_count) == C_ERR)
+         exit(1);
+```
+
+具体的逻辑我们继续看listenToPort函数
+
+```c
+/* Initialize a set of file descriptors to listen to the specified 'port'
+ * binding the addresses specified in the Redis server configuration.
+ * 初始化一组文件描述符以监听绑定在 Redis 服务器配置中指定的地址的指定端口。
+ * The listening file descriptors are stored in the integer array 'fds'
+ * and their number is set in '*count'.
+ * 监听的文件描述符被存储在fds整型数组上和它们的数量被保存在*count上
+ * The addresses to bind are specified in the global server.bindaddr array
+ * and their number is server.bindaddr_count. If the server configuration
+ * contains no specific addresses to bind, this function will try to
+ * bind * (all addresses) for both the IPv4 and IPv6 protocols.
+ *
+ * 要绑定的地址在全局 server.bindaddr 数组中指定，它们的数量是 server.bindaddr_count。
+ * 如果服务器配置不包含要绑定的特定地址，此函数将尝试为 IPv4 和 IPv6 协议绑定 *（所有地址）。
+ * 
+ * On success the function returns C_OK.
+ * 成功时，函数返回 C_OK。
+ *
+ * On error the function returns C_ERR. For the function to be on
+ * error, at least one of the server.bindaddr addresses was
+ * impossible to bind, or no bind addresses were specified in the server
+ * configuration but the function is not able to bind * for at least
+ * one of the IPv4 or IPv6 protocols. 
+ * 出错时，函数返回 C_ERR。
+ * 要使函数出错，至少有一个 server.bindaddr 地址无法绑定，
+ * 或者在服务器配置中未指定绑定地址，但函数无法绑定 * IPv4 或 IPv6 协议中的至少一个。*/
+int listenToPort(int port, int *fds, int *count)
+{
+    int j;
+
+    /* Force binding of 0.0.0.0 if no bind address is specified, always
+     * entering the loop if j == 0.
+     如果没有指定绑定地址那么默认强制绑定0.0.0.0 ，如果j==0，总是会进入循环
+     */
+    if (server.bindaddr_count == 0)
+        server.bindaddr[0] = NULL;
+    for (j = 0; j < server.bindaddr_count || j == 0; j++)
+    {
+        if (server.bindaddr[j] == NULL)
+        {
+            int unsupported = 0;
+            /* Bind * for both IPv6 and IPv4, we enter here only if
+             * server.bindaddr_count == 0.
+             为 IPv6 和 IPv4 绑定 *，仅当 server.bindaddr_count == 0 时才会进入这里*/
+            fds[*count] = anetTcp6Server(server.neterr, port, NULL,
+                                         server.tcp_backlog);
+            if (fds[*count] != ANET_ERR)
+            {
+                anetNonBlock(NULL, fds[*count]);
+                (*count)++;
+            }
+            else if (errno == EAFNOSUPPORT)
+            {
+                unsupported++;
+                serverLog(LL_WARNING, "Not listening to IPv6: unsupported");
+            }
+
+            if (*count == 1 || unsupported)
+            {
+                /* Bind the IPv4 address as well. */
+                fds[*count] = anetTcpServer(server.neterr, port, NULL,
+                                            server.tcp_backlog);
+                if (fds[*count] != ANET_ERR)
+                {
+                    anetNonBlock(NULL, fds[*count]);
+                    (*count)++;
+                }
+                else if (errno == EAFNOSUPPORT)
+                {
+                    unsupported++;
+                    serverLog(LL_WARNING, "Not listening to IPv4: unsupported");
+                }
+            }
+            /* Exit the loop if we were able to bind * on IPv4 and IPv6,
+             * otherwise fds[*count] will be ANET_ERR and we'll print an
+             * error and return to the caller with an error.
+             * 如果我们成功绑定了IPv4和IPv6，会退出循环
+             * 否则fds[*count]会等于ANET_ERR,我们会打印错误和返回错误
+             * */
+            if (*count + unsupported == 2)
+                break;
+        }
+        else if (strchr(server.bindaddr[j], ':'))
+        {
+            /* Bind IPv6 address. */
+            fds[*count] = anetTcp6Server(server.neterr, port, server.bindaddr[j],
+                                         server.tcp_backlog);
+        }
+        else
+        {
+            /* Bind IPv4 address. */
+            fds[*count] = anetTcpServer(server.neterr, port, server.bindaddr[j],
+                                        server.tcp_backlog);
+        }
+        if (fds[*count] == ANET_ERR)
+        {
+            int net_errno = errno;
+            serverLog(LL_WARNING,
+                      "Could not create server TCP listening socket %s:%d: %s",
+                      server.bindaddr[j] ? server.bindaddr[j] : "*",
+                      port, server.neterr);
+            if (net_errno == ENOPROTOOPT || net_errno == EPROTONOSUPPORT ||
+                net_errno == ESOCKTNOSUPPORT || net_errno == EPFNOSUPPORT ||
+                net_errno == EAFNOSUPPORT || net_errno == EADDRNOTAVAIL)
+                continue;
+            return C_ERR;
+        }
+        anetNonBlock(NULL, fds[*count]);
+        (*count)++;
+    }
+    return C_OK;
+}
+
+```
+
+此函数就是通过调用anetTcpServer和anetTcp6Server分别为IPv4地址和IPv6地址绑定端口，并返回一个文件描述符如何通过anetNonBlock来设置当前套接字为非阻塞，那么socket在收到消息的时候不会一直阻塞，而是会马上通知程序进行读取，实现的方式通常有select或者epoll（linux）。
+
+该函数会帮每一个你在配置文件中配置的地址绑定端口，例如：如果您设置了 127.0.0.1 ，192.168.31.31 和 101.122.102.233（Redis默认可以让我们最多配置16个不同的地址） 作为您需要bind的地址（前提是三个地址都是可以访问本机的地址，如果您没有公网地址，但是配置了公网地址，那么就会启动失败，或者您输入了跟你不相符的内网地址也是一样的。），那么它会为每一个地址跟端口绑定生成一个socket，返回相应数量的文件描述符。当然您也可以设置成IPv6的格式。
+
+在bind配置下，只有访问您设置的地址才能访问Redis，如果您设置成127.0.0.1，那么外部的机器都不能访问您的Redis服务器（那么您会是安全的），因为所有访问127.0.0.1的机器最终只会访问它自己本地，（众所周知127.0.0.1是一个回环地址），如果您设置成0.0.0.0，或者不设置bind属性，那么Redis会为您所有属于您的地址绑定端口并提供外部访问，这样造成的结果就是知道您任意一个ip地址和正确的redis端口，都有访问成功的可能性（前提是知道密码，默认是无密码的）
+
+我们看完了redis是如何生成socket等待外部连接的，那么我们就来看看，客户的是如何连接redis的。
+
+### 打开TCP监听socket
+
+当我们初始化完成socket之后，我们就需要为每一个socket创建一个事件循环，来获取来自socket的数据。
+
+具体的代码在initServer中
+
+```c
+* Create an event handler for accepting new connections in TCP and Unix
+     * domain sockets.
+     * 创建一个事件处理程序以接受 TCP 和 Unix 域套接字中的新连接
+     * 每绑定一个地址就创建一个事件处理器
+     */
+    for (j = 0; j < server.ipfd_count; j++)
+    {
+        if (aeCreateFileEvent(server.el, server.ipfd[j], AE_READABLE, acceptTcpHandler, NULL) == AE_ERR)
+        {
+            serverPanic(
+                "Unrecoverable error creating server.ipfd file event.");
+        }
+    }
+```
+
+里面的核心实现分别是创建事件处理aeCreateFileEvent和实际的处理入口acceptTcpHandler。
+
+让我们先看aeCreateFileEvent
+
+```c
+int aeCreateFileEvent(aeEventLoop *eventLoop, int fd, int mask,
+        aeFileProc *proc, void *clientData)
+{
+    if (fd >= eventLoop->setsize) {
+        errno = ERANGE;
+        return AE_ERR;
+    }
+    aeFileEvent *fe = &eventLoop->events[fd];
+
+    if (aeApiAddEvent(eventLoop, fd, mask) == -1)
+        return AE_ERR;
+    fe->mask |= mask;
+    if (mask & AE_READABLE) fe->rfileProc = proc;
+    if (mask & AE_WRITABLE) fe->wfileProc = proc;
+    fe->clientData = clientData;
+    if (fd > eventLoop->maxfd)
+        eventLoop->maxfd = fd;
+    return AE_OK;
+}
+```
+
+创建事件循环的代码不长，参数中的mask位的值，从上面可知是AE_READABLE，代表该实现循环会等到该socket存在可读数据的时候调用acceptTcpHandler进行处理
+
+我们再看看acceptTcpHandler
+
+```c
+void acceptTcpHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
+    int cport, cfd, max = MAX_ACCEPTS_PER_CALL;
+    char cip[NET_IP_STR_LEN];
+    UNUSED(el);
+    UNUSED(mask);
+    UNUSED(privdata);
+    //一次调用最多接收1000个TCP连接
+    while(max--) {
+        cfd = anetTcpAccept(server.neterr, fd, cip, sizeof(cip), &cport);
+        if (cfd == ANET_ERR) {
+            if (errno != EWOULDBLOCK)
+                serverLog(LL_WARNING,
+                    "Accepting client connection: %s", server.neterr);
+            return;
+        }
+        printf("Accepted cfd:%d fd:%d addr:%s:%d\n",cfd,fd, cip, cport);
+        serverLog(LL_VERBOSE,"Accepted %s:%d", cip, cport);
+        acceptCommonHandler(connCreateAcceptedSocket(cfd),0,cip);
+    }
+}
+```
+
+acceptTcpHandler顾名思义就是接受TCP请求的时候会触发的函数，像是在客户端请求连接的时候，一旦完成三次握手成功建立连接之后，此客户端以后的发送的数据都不会触发该函数，即使它们的数据也是通过TCP进行发送的，因为他们所利用的文件描述符是不相同的。
+
+此函数的主要内容就是收到有TCP连接请求的时候进行处理，最多一次处理1000个TCP请求。
+
+fd为侦听地址的文件描述符，也就是一般情况下用于处理连接的socket，但是它并不是TCP通信之间发送数据的socket。我们必须为连接的每一个客户端创建一个socket，尽管他们都是通过6379端口（如果您没有修改默认端口）进入到Redis程序的，但是他们还是不一样的。
+
+我们看到anetTcpAccept函数里的更深层次的实现
+
+```c
+static int anetGenericAccept(char *err, int s, struct sockaddr *sa, socklen_t *len) {
+    int fd;
+    while(1) {
+        fd = accept(s,sa,len);
+        if (fd == -1) {
+            if (errno == EINTR)
+                continue;
+            else {
+                anetSetError(err, "accept: %s", strerror(errno));
+                return ANET_ERR;
+            }
+        }
+        break;
+    }
+    return fd;
+}
+```
+
+我们调用accept函数来正式创建TCP一个连接，并为该连接初始化socket，接受数据，并获取该文件描述符fd。
+
+可能难以理解的点：一开始初始化程序绑定地址端口创建的描述符所对应的socket并不是一个TCP连接，正如我们都所厌恶的三次握手所描述的那样，一个TCP连接由客户端发起，并且服务端接受，这样一来二去我们开始建立连接，但是Redis程序启动的时候，只是声明了6379端口的占用，也生成了相对应的socket来接受连接，此时并没有和客户端之间的互动，由此可见，一开始所标识的文件描述符对应的并不是一个TCP连接，它只是用于监听的一个作用。当完成了TCP连接之后，我们从epoll程序（linux上常用）得知我们收到了一些内容，我们尝试去调用accept的时候，我们所获取到的文件描述符才是真正用于Redis TCP收发信息的socket。也就是acceptTcpHandler函数中的cfd。
+
+接下来我们需要看看Redis程序对cfd对应的连接做了什么。
+
+```c
+connection *connCreateSocket() {
+    connection *conn = zcalloc(sizeof(connection));
+    conn->type = &CT_Socket;
+    conn->fd = -1;
+
+    return conn;
+}
+
+/* Create a new socket-type connection that is already associated with
+ * an accepted connection.
+ *
+ * The socket is not ready for I/O until connAccept() was called and
+ * invoked the connection-level accept handler.
+ *
+ * Callers should use connGetState() and verify the created connection
+ * is not in an error state (which is not possible for a socket connection,
+ * but could but possible with other protocols).
+ */
+connection *connCreateAcceptedSocket(int fd) {
+    connection *conn = connCreateSocket();
+    conn->fd = fd;
+    conn->state = CONN_STATE_ACCEPTING;
+    return conn;
+}
+```
+
+获取到cfd文件描述符之后第一个对它进行操作的是connCreateAcceptedSocket函数，connCreateAcceptedSocket函数的内容非常简单，只是初始化了Reids中的connection数据结构，把conn的fd值设置成cfd的值。也就是为这个文件描述符也就是TCP连接建立了一个Redis对象，然后进行返回。
+
+然后就是acceptCommonHandler对所创建的对象的操作。
+
+```c
+static void acceptCommonHandler(connection *conn, int flags, char *ip) {
+    client *c;
+    char conninfo[100];
+    UNUSED(ip);
+
+    //判断连接状态是否是CONN_STATE_ACCEPTING
+ 
+    //判断客户端数量是否超出限制
+
+    /* Create connection and client 创建一个连接和客户端 */
+    if ((c = createClient(conn)) == NULL) {
+        serverLog(LL_WARNING,
+            "Error registering fd event for the new client: %s (conn: %s)",
+            connGetLastError(conn),
+            connGetInfo(conn, conninfo, sizeof(conninfo)));
+        connClose(conn); /* May be already closed, just ignore errors */
+        return;
+    }
+
+    /* Last chance to keep flags */
+    c->flags |= flags;
+
+    /* Initiate accept.
+     *
+     * Note that connAccept() is free to do two things here:
+     * 1. Call clientAcceptHandler() immediately;
+     * 2. Schedule a future call to clientAcceptHandler().
+     *
+     * Because of that, we must do nothing else afterwards.
+     */
+    if (connAccept(conn, clientAcceptHandler) == C_ERR) {
+        char conninfo[100];
+        if (connGetState(conn) == CONN_STATE_ERROR)
+            serverLog(LL_WARNING,
+                    "Error accepting a client connection: %s (conn: %s)",
+                    connGetLastError(conn), connGetInfo(conn, conninfo, sizeof(conninfo)));
+        freeClient(connGetPrivateData(conn));
+        return;
+    }
+}
+```
+
+acceptCommonHandler的主要操作就是为connection创建了一个Redis client数据结构，并且把connection的状态修改成CONN_STATE_CONNECTED（在函数connSocketAccept中实现，通过上面connAccept(conn, clientAcceptHandler)代码进入）和 调用clientAcceptHandler函数更新了一些统计信息。
+
+至此我们的一个客户端已经成功连接上Redis服务器了，我们也获取到了该TCP通道的文件描述符，创建了一些实例对象，通过epoll机制我们可以有效的知道什么时候收到客户端发来的消息，那么我们到底是如何接受客户端的命令的，我们接着分析。
+
+在上面代码中，有一行c = createClient(conn)) == NULL，做的内容如下：
+
+```c
+client *createClient(connection *conn) {
+    client *c = zmalloc(sizeof(client));
+
+    /* passing NULL as conn it is possible to create a non connected client.
+     * This is useful since all the commands needs to be executed
+     * in the context of a client. When commands are executed in other
+     * contexts (for instance a Lua script) we need a non connected client. */
+    if (conn) {
+        connNonBlock(conn);
+        connEnableTcpNoDelay(conn);
+        if (server.tcpkeepalive)
+            connKeepAlive(conn,server.tcpkeepalive);
+        connSetReadHandler(conn, readQueryFromClient);
+        connSetPrivateData(conn, c);
+    }
+
+    selectDb(c,0);
+    uint64_t client_id = ++server.next_client_id;
+    //省略 赋值操作
+    /* If the default user does not require authentication, the user is
+     * directly authenticated. */
+    //省略 赋值操作
+    listSetFreeMethod(c->reply,freeClientReplyValue);
+    listSetDupMethod(c->reply,dupClientReplyValue);
+    //省略 赋值操作
+    listSetFreeMethod(c->pubsub_patterns,decrRefCountVoid);
+    listSetMatchMethod(c->pubsub_patterns,listMatchObjects);
+    if (conn) linkClient(c);
+    initClientMultiState(c);
+    return c;
+}
+
+```
+
+我们在上面省略了一下无关紧要的赋值操作，我们注意看if（conn）代码块下的内容，我们调用connSetReadHandler并为函数传入了conn和一个读处理函数readQueryFromClient，它的作用就是把为该conn的fd（文件描述符）添加一个读事件处理器，使用的方法还是通过aeCreateFileEvent，这在我们上面已经介绍过了，我们可以阅读下面代码。
+
+```c
+static inline int connSetReadHandler(connection *conn, ConnectionCallbackFunc func) {
+    return conn->type->set_read_handler(conn, func);
+}
+
+static int connSocketSetReadHandler(connection *conn, ConnectionCallbackFunc func) {
+    if (func == conn->read_handler) return C_OK;
+
+    conn->read_handler = func;
+    if (!conn->read_handler)
+        aeDeleteFileEvent(server.el,conn->fd,AE_READABLE);
+    else
+        if (aeCreateFileEvent(server.el,conn->fd,
+                    AE_READABLE,conn->type->ae_handler,conn) == AE_ERR) return C_ERR;
+    return C_OK;
+}
+```
+
+在先前的代码分析中，我们分析了aeCreateFileEvent把服务器监听的socket和acceptTcpHandler绑定起来，在socket收到数据的时候，会调用该sokcet文件描述符所绑定的读处理器，该处理器就是acceptTcpHandler，那我们建立完TCP连接之后，我们又重新生成了该TCP socket所对应的文件文件描述符，我们还没有为该描述符添加事件处理，只有添加了事件处理之后，从该socket收到数据之后，我们才能找到处理方法，该处理方法如代码所示，就是readQueryFromClient。
+
+那么现在已经非常清晰了，从服务器监听端口（socket1）来的数据，我们认为它是来建立TCP连接请求的，所以我们调用acceptTcpHandler，当我们完成3次握手之后，通过accept函数传入socket1，并生成了socket2，也就是与客户端TCP连接的socket。从socket2来的数据，我们认为它是客户端发来的请求，所以我们调用readQueryFromClient。
+
+至此我们已经分析完，Redis服务器是如何处理TCP连接请求和建立了请求之后为它分配的数据函数。我们下面就来看看readQueryFromClient函数它的庐山真面目。
+
+```c
+/**
+ * @brief 从客户端读取数据
+ * 
+ * @param conn 
+ */
+void readQueryFromClient(connection *conn) {
+    printf("readQueryFromClient\n");
+    //从连接中获取客户端实例
+    client *c = connGetPrivateData(conn);
+    int nread, readlen;
+    size_t qblen;
+
+    /* Check if we want to read from the client later when exiting from
+     * the event loop. This is the case if threaded I/O is enabled. 
+     在退出事件循环时检查我们是否想稍后从客户端读取。如果启用了线程 I/O，就会出现这种情况。
+     */
+    if (postponeClientRead(c)) return;
+
+    /* Update total number of reads on server 
+    更新服务器处理的总数量 */
+    server.stat_total_reads_processed++;
+    //通用I/O 缓冲区大小 默认16kb
+    readlen = PROTO_IOBUF_LEN;
+    /* If this is a multi bulk request, and we are processing a bulk reply
+     * that is large enough, try to maximize the probability that the query
+     * buffer contains exactly the SDS string representing the object, even
+     * at the risk of requiring more read(2) calls. This way the function
+     * processMultiBulkBuffer() can avoid copying buffers to create the
+     * Redis Object representing the argument. 
+     * 如果这是一个多批量请求，并且我们正在处理一个足够大的批量回复，
+     * 请尝试最大化查询缓冲区恰好包含表示对象的 SDS 字符串的概率，
+     * 即使可能需要更多的 read() 调用 . 
+     * 这样，函数 processMultiBulkBuffer() 可以避免复制缓冲区来创建表示参数的 Redis 对象。
+     * */
+    printf("c->reqtype:%d\n",c->reqtype);
+    if (c->reqtype == PROTO_REQ_MULTIBULK && c->multibulklen && c->bulklen != -1
+        && c->bulklen >= PROTO_MBULK_BIG_ARG)
+    {
+        ssize_t remaining = (size_t)(c->bulklen+2)-sdslen(c->querybuf);
+
+        /* Note that the 'remaining' variable may be zero in some edge case,
+         * for example once we resume a blocked client after CLIENT PAUSE. 
+         请注意，在某些情况下，“remaining”变量可能为零，例如：一旦我们在客户端暂停后恢复被阻塞的客户端*/
+        if (remaining > 0 && remaining < readlen) {
+            readlen = remaining;
+        }
+    }
+    //获取已经读取的长度，作为偏移量加到下面connRead函数中，代表把读取的数据追加到后方
+    qblen = sdslen(c->querybuf);
+    if (c->querybuf_peak < qblen) {
+        //更新querybuf 大小的最近（100 毫秒或更多）峰值
+        c->querybuf_peak = qblen;
+    }
+    //我们扩大字符串的长度，以至于我们有足够的空间去读取新数据和存放结尾NULL符号
+    c->querybuf = sdsMakeRoomFor(c->querybuf, readlen);
+    //从socket读取数据，把readlen长度的数据读取到c->querybuf+qblen的地址后
+    nread = connRead(c->conn, c->querybuf+qblen, readlen);
+    /**
+     * 1.当read返回值大于0时，返回读到数据的实际字节数
+     * 2.返回值等于0时，表示读到文件末尾。
+     * 3.返回值小于0时，返回-1且设置errno
+     */
+    if (nread == -1) {
+        //如果读取完了，
+        if (connGetState(conn) == CONN_STATE_CONNECTED) {
+            return;
+        } else {
+            serverLog(LL_VERBOSE, "Reading from client: %s",connGetLastError(c->conn));
+            freeClientAsync(c);
+            return;
+        }
+    } else if (nread == 0) {
+        serverLog(LL_VERBOSE, "Client closed connection");
+        freeClientAsync(c);
+        return;
+    } else if (c->flags & CLIENT_MASTER) {
+        /* Append the query buffer to the pending (not applied) buffer
+         * of the master. We'll use this buffer later in order to have a
+         * copy of the string applied by the last command executed. 
+         * 将查询缓冲区附加到主节点的待处理缓冲区。
+         * 稍后我们将使用此缓冲区，以便获得最后的执行结果的副本。
+         * 这或许用于主从复制 */
+        c->pending_querybuf = sdscatlen(c->pending_querybuf,
+                                        c->querybuf+qblen,nread);
+    }
+    /**
+     * 我们在上面扩容sds的操作中，使用了一个预分配的策略，
+     * 我们实际上会分配更多的空间（具体请看sdsMakeRoomFor），来避免读取数据时空间不足和污染内存，
+     * 那么此刻，我们已经得知nread为读取到的实际数量，那么我们就把长度重新修剪成真实的长度，并在最后方追加\0
+     * */
+    sdsIncrLen(c->querybuf,nread);
+    //更新最后一次交互的时间
+    c->lastinteraction = server.unixtime;
+    //如果是主节点，增加读取复制的偏移量
+    if (c->flags & CLIENT_MASTER) c->read_reploff += nread;
+    //服务器统计信息
+    server.stat_net_input_bytes += nread;
+    //如果读取到的总长度大于客户端查询缓冲区长度限制，那么我们会关闭客户端连接
+    if (sdslen(c->querybuf) > server.client_max_querybuf_len) {
+        sds ci = catClientInfoString(sdsempty(),c), bytes = sdsempty();
+
+        bytes = sdscatrepr(bytes,c->querybuf,64);
+        serverLog(LL_WARNING,"Closing client that reached max query buffer length: %s (qbuf initial bytes: %s)", ci, bytes);
+        sdsfree(ci);
+        sdsfree(bytes);
+        freeClientAsync(c);
+        return;
+    }
+
+    /* There is more data in the client input buffer, continue parsing it
+     * in case to check if there is a full command to execute. 
+     客户端输入缓冲区中还有很多内容，继续解析以检查是否有完整的命令要执行。*/
+     processInputBuffer(c);
+}
+```
+
+在我们满心欢喜看完readQueryFromClient之后，发现它还没有对数据进行处理，仅仅只是从socket中读取数据到conn的buf数据缓存区罢了。
+
+只不过它做的更快。得益于Redis的sds 简单动态字符串实现：
+
+```c
+//获取sds s的长度 
+oldlen = sdslen(s);
+//s根据BUFFER_SIZE被重新扩容，扩容后的大小，新长度为当：len(s)+BUFFER_SIZE<1024kb时，等于两倍len(s)+BUFFER_SIZE，当len(s)+BUFFER_SIZE>1024时，等于len(s)+BUFFER_SIZE+1024
+//那么这里它是使用预分配的策略，会分配更多的空间来读取数据
+s = sdsMakeRoomFor(s, BUFFER_SIZE);
+nread = read(fd, s+oldlen, BUFFER_SIZE);
+//检查nread是否小与0
+//此刻，我们已经得知nread为读取到的实际数量，那么我们就把长度重新修剪成真实的长度，并在最后方追加\0
+sdsIncrLen(s, nread);
+```
+
+我们把上面读取socket内容到字符串做了一个简单的概括，sds字符串的好处。它通过预分配空间的策略，传统c语言拼接字符串的缺点，需要重新开拓足够2块数据存放的空间再把两块数据复制到新空间去。这里sds字符串只使用了一次复制，最后它通过获取时机读取的字节数量，又重新把sds字符串的长度重新修剪成正确的长度，也释放掉没有使用的空间。
+
+在读取字符串的时候了解了一下redis的sds，发现学问不少，但是我们目前最重要的任务还是继续分析Redis对客户端数据的处理。
+
+我们来到processInputBuffer函数：
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+## 下面是Redis官方内容
+
+
+
 This README is just a fast *quick start* document. You can find more detailed documentation at [redis.io](https://redis.io).
 
 此README文件只是快速启动文档，您可以在[redis.io](https://redis.io)找到更详细的文档。

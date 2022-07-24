@@ -199,9 +199,11 @@ void sdsclear(sds s) {
 /* Enlarge the free space at the end of the sds string so that the caller
  * is sure that after calling this function can overwrite up to addlen
  * bytes after the end of the string, plus one more byte for nul term.
- *
+ * 扩大sds字符串末尾的可用空间，以便调用者确保在调用此函数后，
+ * 可以在字符串结尾后覆盖多达addlen个字节，再加上一个字节作为null项。
  * Note: this does not change the *length* of the sds string as returned
- * by sdslen(), but only the free buffer space we have. */
+ * by sdslen(), but only the free buffer space we have. 
+ * 注意：这不会改变 sdslen() 返回的 sds 字符串的 *length*，而只会改变我们拥有的可用缓冲区空间。*/
 sds sdsMakeRoomFor(sds s, size_t addlen) {
     void *sh, *newsh;
     size_t avail = sdsavail(s);
@@ -313,25 +315,27 @@ void *sdsAllocPtr(sds s) {
 /* Increment the sds length and decrements the left free space at the
  * end of the string according to 'incr'. Also set the null term
  * in the new end of the string.
- *
+ * 根据'incr'增加sds长度并减少字符串末尾的剩余可用空间。 还要在字符串的新末尾设置空项。
  * This function is used in order to fix the string length after the
  * user calls sdsMakeRoomFor(), writes something after the end of
  * the current string, and finally needs to set the new length.
- *
+ * 该函数用于在用户调用 sdsMakeRoomFor() 后固定字符串长度，在当前字符串末尾写入一些内容，最后需要设置新长度
  * Note: it is possible to use a negative increment in order to
  * right-trim the string.
- *
+ * 注意：可以使用负增量来右修剪字符串。
  * Usage example:
  *
  * Using sdsIncrLen() and sdsMakeRoomFor() it is possible to mount the
  * following schema, to cat bytes coming from the kernel to the end of an
  * sds string without copying into an intermediate buffer:
- *
+ * 使用 sdsIncrLen() 和 sdsMakeRoomFor() 可以用以下模式，将来自内核的字节分类到 sds 字符串的末尾，而无需复制到中间缓冲区：
+ * 
  * oldlen = sdslen(s);
  * s = sdsMakeRoomFor(s, BUFFER_SIZE);
  * nread = read(fd, s+oldlen, BUFFER_SIZE);
  * ... check for nread <= 0 and handle it ...
  * sdsIncrLen(s, nread);
+ * 
  */
 void sdsIncrLen(sds s, ssize_t incr) {
     unsigned char flags = s[-1];

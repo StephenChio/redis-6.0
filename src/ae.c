@@ -451,7 +451,6 @@ int aeProcessEvents(aeEventLoop *eventLoop, int flags)
         /* Call the multiplexing API, will return only on timeout or when
          * some event fires. */
         numevents = aeApiPoll(eventLoop, tvp);
-
         /* After sleep callback. */
         if (eventLoop->aftersleep != NULL && flags & AE_CALL_AFTER_SLEEP)
             eventLoop->aftersleep(eventLoop);
@@ -460,6 +459,8 @@ int aeProcessEvents(aeEventLoop *eventLoop, int flags)
             aeFileEvent *fe = &eventLoop->events[eventLoop->fired[j].fd];
             int mask = eventLoop->fired[j].mask;
             int fd = eventLoop->fired[j].fd;
+            printf("fd:%d\n",fd);
+            printf("mask:%d\n",mask);
             int fired = 0; /* Number of events fired for current fd. */
 
             /* Normally we execute the readable event first, and the writable
@@ -482,6 +483,7 @@ int aeProcessEvents(aeEventLoop *eventLoop, int flags)
              * Fire the readable event if the call sequence is not
              * inverted. */
             if (!invert && fe->mask & mask & AE_READABLE) {
+                printf("486\n");
                 fe->rfileProc(eventLoop,fd,fe->clientData,mask);
                 fired++;
                 fe = &eventLoop->events[fd]; /* Refresh in case of resize. */
@@ -490,6 +492,7 @@ int aeProcessEvents(aeEventLoop *eventLoop, int flags)
             /* Fire the writable event. */
             if (fe->mask & mask & AE_WRITABLE) {
                 if (!fired || fe->wfileProc != fe->rfileProc) {
+                    printf("495\n");
                     fe->wfileProc(eventLoop,fd,fe->clientData,mask);
                     fired++;
                 }
@@ -502,6 +505,7 @@ int aeProcessEvents(aeEventLoop *eventLoop, int flags)
                 if ((fe->mask & mask & AE_READABLE) &&
                     (!fired || fe->wfileProc != fe->rfileProc))
                 {
+                    printf("508\n");
                     fe->rfileProc(eventLoop,fd,fe->clientData,mask);
                     fired++;
                 }
