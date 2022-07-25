@@ -2,12 +2,12 @@
 
 想要学习Redis工作方式，最好的方式就是了解它的线程模型，它究竟是如何接受请求，如何处理请求，它究竟是传说中的单线程工作还是多线程，让我们来一探究竟。
 
-### main()
+## main()
 
 redis启动函数是server.c文件的最后一个函数
 
 ```c
-*主程序入口*/
+/*主程序入口*/
 int main(int argc, char **argv)
 {
     struct timeval tv;
@@ -388,7 +388,9 @@ int main(int argc, char **argv)
 
 
 
-### 初始化默认配置
+## 初始化默认配置
+
+### initConfigValues
 
 ```c
 void initConfigValues() {
@@ -402,7 +404,9 @@ Redis通过调用init函数指针来为每一个不同数据类型的配置进�
 
 
 
-### 绑定地址和端口
+## 绑定地址和端口
+
+### listenToPort
 
 Redis绑定地址和端口的逻辑在main函数中的initServer函数里。当绑定地址和端口失败则退出。
 
@@ -538,7 +542,7 @@ int listenToPort(int port, int *fds, int *count)
 
 我们看完了redis是如何生成socket等待外部连接的，那么我们就来看看，客户的是如何连接redis的。
 
-### 打开TCP监听socket
+## 打开TCP监听socket
 
 当我们初始化完成socket之后，我们就需要为每一个socket创建一个事件循环，来获取来自socket的数据。
 
@@ -561,6 +565,10 @@ int listenToPort(int port, int *fds, int *count)
 ```
 
 里面的核心实现分别是创建事件处理aeCreateFileEvent和实际的处理入口acceptTcpHandler。
+
+
+
+### aeCreateFileEvent
 
 让我们先看aeCreateFileEvent
 
@@ -587,6 +595,10 @@ int aeCreateFileEvent(aeEventLoop *eventLoop, int fd, int mask,
 ```
 
 创建事件循环的代码不长，参数中的mask位的值，从上面可知是AE_READABLE，代表该实现循环会等到该socket存在可读数据的时候调用acceptTcpHandler进行处理
+
+
+
+### acceptTcpHandler
 
 我们再看看acceptTcpHandler
 
@@ -619,6 +631,12 @@ acceptTcpHandler顾名思义就是接受TCP请求的时候会触发的函数，�
 
 fd为侦听地址的文件描述符，也就是一般情况下用于处理连接的socket，但是它并不是TCP通信之间发送数据的socket。我们必须为连接的每一个客户端创建一个socket，尽管他们都是通过6379端口（如果您没有修改默认端口）进入到Redis程序的，但是他们还是不一样的。
 
+
+
+## 与客户端建立TCP连接并传输数据
+
+### anetGenericAccept
+
 我们看到anetTcpAccept函数里的更深层次的实现
 
 ```c
@@ -643,6 +661,10 @@ static int anetGenericAccept(char *err, int s, struct sockaddr *sa, socklen_t *l
 我们调用accept函数来正式创建TCP一个连接，并为该连接初始化socket，接受数据，并获取该文件描述符fd。
 
 可能难以理解的点：一开始初始化程序绑定地址端口创建的描述符所对应的socket并不是一个TCP连接，正如我们都所厌恶的三次握手所描述的那样，一个TCP连接由客户端发起，并且服务端接受，这样一来二去我们开始建立连接，但是Redis程序启动的时候，只是声明了6379端口的占用，也生成了相对应的socket来接受连接，此时并没有和客户端之间的互动，由此可见，一开始所标识的文件描述符对应的并不是一个TCP连接，它只是用于监听的一个作用。当完成了TCP连接之后，我们从epoll程序（linux上常用）得知我们收到了一些内容，我们尝试去调用accept的时候，我们所获取到的文件描述符才是真正用于Redis TCP收发信息的socket。也就是acceptTcpHandler函数中的cfd。
+
+
+
+### connCreateSocket
 
 接下来我们需要看看Redis程序对cfd对应的连接做了什么。
 
@@ -674,6 +696,10 @@ connection *connCreateAcceptedSocket(int fd) {
 ```
 
 获取到cfd文件描述符之后第一个对它进行操作的是connCreateAcceptedSocket函数，connCreateAcceptedSocket函数的内容非常简单，只是初始化了Reids中的connection数据结构，把conn的fd值设置成cfd的值。也就是为这个文件描述符也就是TCP连接建立了一个Redis对象，然后进行返回。
+
+
+
+### acceptCommonHandler
 
 然后就是acceptCommonHandler对所创建的对象的操作。
 
@@ -724,6 +750,10 @@ acceptCommonHandler的主要操作就是为connection创建了一个Redis client
 
 至此我们的一个客户端已经成功连接上Redis服务器了，我们也获取到了该TCP通道的文件描述符，创建了一些实例对象，通过epoll机制我们可以有效的知道什么时候收到客户端发来的消息，那么我们到底是如何接受客户端的命令的，我们接着分析。
 
+
+
+### createClient
+
 在上面代码中，有一行c = createClient(conn)) == NULL，做的内容如下：
 
 ```c
@@ -763,6 +793,10 @@ client *createClient(connection *conn) {
 
 我们在上面省略了一下无关紧要的赋值操作，我们注意看if（conn）代码块下的内容，我们调用connSetReadHandler并为函数传入了conn和一个读处理函数readQueryFromClient，它的作用就是把为该conn的fd（文件描述符）添加一个读事件处理器，使用的方法还是通过aeCreateFileEvent，这在我们上面已经介绍过了，我们可以阅读下面代码。
 
+
+
+### connSetReadHandler
+
 ```c
 static inline int connSetReadHandler(connection *conn, ConnectionCallbackFunc func) {
     return conn->type->set_read_handler(conn, func);
@@ -785,7 +819,13 @@ static int connSocketSetReadHandler(connection *conn, ConnectionCallbackFunc fun
 
 那么现在已经非常清晰了，从服务器监听端口（socket1）来的数据，我们认为它是来建立TCP连接请求的，所以我们调用acceptTcpHandler，当我们完成3次握手之后，通过accept函数传入socket1，并生成了socket2，也就是与客户端TCP连接的socket。从socket2来的数据，我们认为它是客户端发来的请求，所以我们调用readQueryFromClient。
 
-至此我们已经分析完，Redis服务器是如何处理TCP连接请求和建立了请求之后为它分配的数据函数。我们下面就来看看readQueryFromClient函数它的庐山真面目。
+至此我们已经分析完，Redis服务器是如何处理TCP连接请求和建立了请求之后为它分配的数据函数。
+
+
+
+### readQueryFromClient
+
+我们下面就来看看readQueryFromClient函数它的庐山真面目。
 
 ```c
 /**
@@ -924,6 +964,10 @@ sdsIncrLen(s, nread);
 
 在读取字符串的时候了解了一下redis的sds，发现学问不少，但是我们目前最重要的任务还是继续分析Redis对客户端数据的处理。
 
+
+
+### processInputBuffer
+
 我们来到processInputBuffer函数：
 
 
@@ -962,7 +1006,7 @@ sdsIncrLen(s, nread);
 
 
 
-## 下面是Redis官方内容
+# 下面是Redis官方内容
 
 
 
