@@ -1720,21 +1720,31 @@ static void setProtocolError(const char *errstr, client *c) {
  * The function also returns C_ERR when there is a protocol error: in such a
  * case the client structure is setup to reply with the error and close
  * the connection.
- *
+ * 处理客户端“c”的查询缓冲区，设置用于执行命令的客户端参数向量。
+ * 如果在运行该函数后，客户端有一个格式良好的准备处理命令，则返回C_OK，
+ * 否则，如果仍然需要读取更多缓冲区以获取完整命令，则返回C_ERR。
+ * 当出现协议错误时，该函数还返回C_ERR
+ * 在这种情况下，客户端结构被设置为用错误回复并关闭连接
+ * 
  * This function is called if processInputBuffer() detects that the next
  * command is in RESP format, so the first byte in the command is found
- * to be '*'. Otherwise for inline commands processInlineBuffer() is called. */
+ * to be '*'. Otherwise for inline commands processInlineBuffer() is called. 
+ * 如果processInputBuffer（）检测到下一个命令为RESP格式，则调用此函数，
+ * 因此发现命令中的第一个字节为“*”。否则，对于内联命令，将调用processInlineBuffer()。*/
 int processMultibulkBuffer(client *c) {
+    printf("processMultibulkBuffer\n");
     char *newline = NULL;
     int ok;
     long long ll;
-
+    printf("c->multibulklen:%d\n",c->multibulklen);
     if (c->multibulklen == 0) {
-        /* The client should have been reset */
+        /* The client should have been reset 客户端已经被重置*/
         serverAssertWithInfo(c,NULL,c->argc == 0);
 
-        /* Multi bulk length cannot be read without a \r\n */
+        /* Multi bulk length cannot be read without a \r\n 
+        如果没有\r\n，则无法读取多块长度*/
         newline = strchr(c->querybuf+c->qb_pos,'\r');
+        printf("newline:%s\n",newline);
         if (newline == NULL) {
             if (sdslen(c->querybuf)-c->qb_pos > PROTO_INLINE_MAX_SIZE) {
                 addReplyError(c,"Protocol error: too big mbulk count string");
@@ -1743,13 +1753,17 @@ int processMultibulkBuffer(client *c) {
             return C_ERR;
         }
 
-        /* Buffer should also contain \n */
+        /* Buffer should also contain \n 
+        缓冲区也应该包含\n*/
         if (newline-(c->querybuf+c->qb_pos) > (ssize_t)(sdslen(c->querybuf)-c->qb_pos-2))
             return C_ERR;
 
         /* We know for sure there is a whole line since newline != NULL,
-         * so go ahead and find out the multi bulk length. */
+         * so go ahead and find out the multi bulk length. 
+         我们确信有一整行，因为换行符不是空的，所以继续找出剩下的multi bulk长度 */
         serverAssertWithInfo(c,NULL,c->querybuf[c->qb_pos] == '*');
+        printf("c->querybuf+1+c->qb_pos:%s\n",c->querybuf+1+c->qb_pos);
+        printf("newline-(c->querybuf+1+c->qb_pos):%ld\n",newline-(c->querybuf+1+c->qb_pos));
         ok = string2ll(c->querybuf+1+c->qb_pos,newline-(c->querybuf+1+c->qb_pos),&ll);
         if (!ok || ll > 1024*1024) {
             addReplyError(c,"Protocol error: invalid multibulk length");
@@ -1766,13 +1780,12 @@ int processMultibulkBuffer(client *c) {
         if (ll <= 0) return C_OK;
 
         c->multibulklen = ll;
-
-        /* Setup argv array on client structure */
+        /* Setup argv array on client structure 初始化客户端参数数据结构*/
         if (c->argv) zfree(c->argv);
         c->argv = zmalloc(sizeof(robj*)*c->multibulklen);
         c->argv_len_sum = 0;
     }
-
+    printf("c->multibulklen:%d\n",c->multibulklen);
     serverAssertWithInfo(c,NULL,c->multibulklen > 0);
     while(c->multibulklen) {
         /* Read bulk length if unknown */
@@ -1949,41 +1962,53 @@ int processPendingCommandsAndResetClient(client *c) {
  * or because a client was blocked and later reactivated, so there could be
  * pending query buffer, already representing a full command, to process. 
  * 
- * 每当客户端有需要处理的query buffer的时候都会调用此函数。
+ * 每次调用此函数时，在客户端结构“c”中，都会有更多的查询缓冲区要处理，
+ * 因为我们从套接字读取了更多数据，或者因为客户端被阻止并随后重新激活，
+ * 所以可能会有挂起的查询缓冲区要处理，该缓冲区已经代表了完整的命令。
  * */
 void processInputBuffer(client *c) {
-    /* Keep processing while there is something in the input buffer */
+    /* Keep processing while there is something in the input buffer 当我们读取的数据没有到缓冲区结尾时循环*/
     while(c->qb_pos < sdslen(c->querybuf)) {
-        /* Return if clients are paused. */
+        /* Return if clients are paused. 如果客户端暂停了，我们返回*/
         if (!(c->flags & CLIENT_SLAVE) && 
             !(c->flags & CLIENT_PENDING_READ) && 
             clientsArePaused()) break;
 
-        /* Immediately abort if the client is in the middle of something. */
+        /* Immediately abort if the client is in the middle of something.
+        如果客户端正在进行某项阻塞操作，请立即中止 */
         if (c->flags & CLIENT_BLOCKED) break;
 
         /* Don't process more buffers from clients that have already pending
-         * commands to execute in c->argv. */
+         * commands to execute in c->argv.
+         当客户端已经挂起c->argv中要去执行的命令时，我们不处理来自该客户端的数据 */
         if (c->flags & CLIENT_PENDING_COMMAND) break;
 
         /* Don't process input from the master while there is a busy script
          * condition on the slave. We want just to accumulate the replication
          * stream (instead of replying -BUSY like we do with other clients) and
-         * later resume the processing. */
+         * later resume the processing. 
+         * 当从节点上的脚本繁忙时，不要处理来自主节点的输入。
+         * 我们只想积累复制流（而不是像其他客户端那样忙着回复），然后继续处理。*/
         if (server.lua_timedout && c->flags & CLIENT_MASTER) break;
 
         /* CLIENT_CLOSE_AFTER_REPLY closes the connection once the reply is
          * written to the client. Make sure to not let the reply grow after
          * this flag has been set (i.e. don't process more commands).
-         *
-         * The same applies for clients we want to terminate ASAP. */
+         * CLIENT_CLOSE_AFTER_REPLY在将回复写入客户端后关闭连接。
+         * 确保在设置此标志后，回复不会增长（即不要处理更多命令）。
+         * The same applies for clients we want to terminate ASAP. 
+         * 这同样适用于我们希望尽快终止的客户*/
         if (c->flags & (CLIENT_CLOSE_AFTER_REPLY|CLIENT_CLOSE_ASAP)) break;
 
-        /* Determine request type when unknown. */
+        /* Determine request type when unknown. 确定请求类型 */
         if (!c->reqtype) {
             if (c->querybuf[c->qb_pos] == '*') {
+                //符合RESP协议的命令
+                printf("request:PROTO_REQ_MULTIBULK\n");
                 c->reqtype = PROTO_REQ_MULTIBULK;
             } else {
+                //管道类型命令
+                printf("request:PROTO_REQ_INLINE\n");
                 c->reqtype = PROTO_REQ_INLINE;
             }
         }
@@ -1992,7 +2017,9 @@ void processInputBuffer(client *c) {
             if (processInlineBuffer(c) != C_OK) break;
             /* If the Gopher mode and we got zero or one argument, process
              * the request in Gopher mode. To avoid data race, Redis won't
-             * support Gopher if enable io threads to read queries. */
+             * support Gopher if enable io threads to read queries. 
+             * 如果Gopher模式和我们得到零或一个参数，则在Gopher模式下处理请求。
+             * 为了避免数据竞争，如果允许io线程读取查询，Redis将不支持Gopher*/
             if (server.gopher_enabled && !server.io_threads_do_reads &&
                 ((c->argc == 1 && ((char*)(c->argv[0]->ptr))[0] == '/') ||
                   c->argc == 0))
@@ -2003,28 +2030,35 @@ void processInputBuffer(client *c) {
                 break;
             }
         } else if (c->reqtype == PROTO_REQ_MULTIBULK) {
+            //对于RESP协议命令，我们使用processMultibulkBuffer处理
             if (processMultibulkBuffer(c) != C_OK) break;
         } else {
             serverPanic("Unknown request type");
         }
 
-        /* Multibulk processing could see a <= 0 length. */
+        /* Multibulk processing could see a <= 0 length. 
+        多批量处理的长度可能小于等于0。*/
         if (c->argc == 0) {
             resetClient(c);
         } else {
             /* If we are in the context of an I/O thread, we can't really
              * execute the command here. All we can do is to flag the client
-             * as one that needs to process the command. */
+             * as one that needs to process the command. 
+             * 如果我们在一个输入/输出线程的上下文中，我们就不能真正执行这里的命令。
+             * 我们所能做的就是将客户端标记为需要处理命令的客户端*/
             if (c->flags & CLIENT_PENDING_READ) {
                 c->flags |= CLIENT_PENDING_COMMAND;
                 break;
             }
 
-            /* We are finally ready to execute the command. */
+            /* We are finally ready to execute the command. 
+            我们最后读取和执行程序*/
             if (processCommandAndResetClient(c) == C_ERR) {
                 /* If the client is no longer valid, we avoid exiting this
                  * loop and trimming the client buffer later. So we return
-                 * ASAP in that case. */
+                 * ASAP in that case. 
+                 * 如果客户端不再有效，我们将避免退出此循环，并在以后修剪客户端缓冲区。
+                 * 在这种情况下，我们会尽快返回。*/
                 return;
             }
         }

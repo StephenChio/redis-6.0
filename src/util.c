@@ -346,21 +346,25 @@ int ll2string(char *dst, size_t dstlen, long long svalue) {
 /* Convert a string into a long long. Returns 1 if the string could be parsed
  * into a (non-overflowing) long long, 0 otherwise. The value will be set to
  * the parsed value when appropriate.
- *
+ * 将字符串转换为长字符串。如果字符串可以解析为（非溢出）long-long，
+ * 则返回1，否则返回0。适当时，该值将设置为解析值。
  * Note that this function demands that the string strictly represents
  * a long long: no spaces or other characters before or after the string
  * representing the number are accepted, nor zeroes at the start if not
  * for the string "0" representing the zero number.
- *
+ * 请注意，此函数要求字符串严格表示long-long：
+ * 表示数字的字符串前后不接受空格或其他字符，如果不是表示零数的字符串“0”，则开头也不接受零。
  * Because of its strictness, it is safe to use this function to check if
  * you can convert a string into a long long, and obtain back the string
- * from the number without any loss in the string representation. */
+ * from the number without any loss in the string representation. 
+ * 由于其严格性，可以安全地使用此函数检查是否可以将字符串转换为long-long，
+ * 并从数字中获取字符串，而不会丢失字符串表示。*/
 int string2ll(const char *s, size_t slen, long long *value) {
     const char *p = s;
     size_t plen = 0;
     int negative = 0;
     unsigned long long v;
-
+    printf("p[0]:%c\n",p[0]);
     /* A zero length string is not a valid number. */
     if (plen == slen)
         return 0;

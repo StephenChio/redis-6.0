@@ -269,7 +269,8 @@ extern int configOOMScoreAdjValuesDefaults[CONFIG_OOM_COUNT];
 #define CLIENT_PENDING_COMMAND (1<<30) /* Used in threaded I/O to signal after
                                           we return single threaded that the
                                           client has already pending commands
-                                          to be executed. */
+                                          to be executed. 
+                                          在线程输入/输出中使用，以在返回单线程后发出信号，表明客户端已挂起要执行的命令*/
 #define CLIENT_TRACKING (1ULL<<31) /* Client enabled keys tracking in order to
                                    perform client side caching. 在线程 I/O 中使用，以在我们返回单线程后发出信号，表明客户端已经有待执行的命令。*/
 #define CLIENT_TRACKING_BROKEN_REDIR (1ULL<<32) /* Target client is invalid. */
@@ -880,13 +881,13 @@ typedef struct client {
     redisDb *db;            /* Pointer to currently SELECTed DB. */
     robj *name;             /* As set by CLIENT SETNAME. */
     sds querybuf;           /* Buffer we use to accumulate client queries. 我们用来累积客户端查询的缓冲区。*/
-    size_t qb_pos;          /* The position we have read in querybuf. */
+    size_t qb_pos;          /* The position we have read in querybuf. 我们从querybuf读取的位置*/
     sds pending_querybuf;   /* If this client is flagged as master, this buffer
                                represents the yet not applied portion of the
                                replication stream that we are receiving from
                                the master. */
     size_t querybuf_peak;   /* Recent (100ms or more) peak of querybuf size. #querybuf 大小的最近（100 毫秒或更多）峰值。*/
-    int argc;               /* Num of arguments of current command. */
+    int argc;               /* Num of arguments of current command. 命令的参数数量*/
     robj **argv;            /* Arguments of current command. */
     size_t argv_len_sum;    /* Sum of lengths of objects in argv list. */
     struct redisCommand *cmd, *lastcmd;  /* Last command executed. */
