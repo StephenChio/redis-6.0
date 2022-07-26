@@ -1105,6 +1105,9 @@ user *ACLGetUserByName(const char *name, size_t namelen) {
 /* Check if the command is ready to be executed in the client 'c', already
  * referenced by c->cmd, and can be executed by this client according to the
  * ACLs associated to the client user c->user.
+ * 
+ * 检查命令是否准备好在客户端“c”中执行，c->cmd 已经引用了该命令，
+ * 并且可以根据与客户端用户 c->user 关联的 ACL 由该客户端执行。
  *
  * If the user can execute the command ACL_OK is returned, otherwise
  * ACL_DENIED_CMD or ACL_DENIED_KEY is returned: the first in case the

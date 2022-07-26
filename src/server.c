@@ -3975,10 +3975,15 @@ void rejectCommandFormat(client *c, const char *fmt, ...)
  * command, arguments are in the client argv/argc fields.
  * processCommand() execute the command or prepare the
  * server for a bulk read from the client.
- *
+ * 如果调用此函数，表明我们已经读取了整个命令，
+ * 参数位于客户端 argv/argc 字段中。 
+ * processCommand() 执行命令或准备从客户端进行批量读取。
+ * 
  * If C_OK is returned the client is still alive and valid and
  * other operations can be performed by the caller. Otherwise
- * if C_ERR is returned the client was destroyed (i.e. after QUIT). */
+ * if C_ERR is returned the client was destroyed (i.e. after QUIT). 
+ * 如果返回 C_OK，则客户端仍然活着且有效，调用者可以执行其他操作。 
+ * 否则，如果返回 C_ERR，则客户端被销毁（即在 QUIT 之后）。*/
 int processCommand(client *c)
 {
     moduleCallCommandFilters(c);
@@ -3986,7 +3991,9 @@ int processCommand(client *c)
     /* The QUIT command is handled separately. Normal command procs will
      * go through checking for replication and QUIT will cause trouble
      * when FORCE_REPLICATION is enabled and would be implemented in
-     * a regular command proc. */
+     * a regular command proc. 
+     * QUIT 命令单独处理。 正常的命令过程将检查复制，
+     * 当启用 FORCE_REPLICATION 时 QUIT 将导致问题，并将在常规命令过程中实现。*/
     if (!strcasecmp(c->argv[0]->ptr, "quit"))
     {
         addReply(c, shared.ok);
@@ -3995,10 +4002,12 @@ int processCommand(client *c)
     }
 
     /* Now lookup the command and check ASAP about trivial error conditions
-     * such as wrong arity, bad command name and so forth. */
+     * such as wrong arity, bad command name and so forth.
+     现在查找命令并尽快检查琐碎的错误情况，例如错误的数量、错误的命令名称等。 */
     c->cmd = c->lastcmd = lookupCommand(c->argv[0]->ptr);
     if (!c->cmd)
     {
+        //找不到命令
         sds args = sdsempty();
         int i;
         for (i = 1; i < c->argc && sdslen(args) < 128; i++)
@@ -4011,6 +4020,7 @@ int processCommand(client *c)
     else if ((c->cmd->arity > 0 && c->cmd->arity != c->argc) ||
              (c->argc < -c->cmd->arity))
     {
+        //参数数量不对
         rejectCommandFormat(c, "wrong number of arguments for '%s' command",
                             c->cmd->name);
         return C_OK;
@@ -4028,7 +4038,8 @@ int processCommand(client *c)
     if (authRequired(c))
     {
         /* AUTH and HELLO and no auth commands are valid even in
-         * non-authenticated state. */
+         * non-authenticated state. 
+         AUTH 和 HELLO 以及 no auth 命令即使在非身份验证状态下也是有效的。 */
         if (!(c->cmd->flags & CMD_NO_AUTH))
         {
             rejectCommand(c, shared.noautherr);
@@ -4037,11 +4048,12 @@ int processCommand(client *c)
     }
 
     /* Check if the user can run this command according to the current
-     * ACLs. */
+     * ACLs. 检查用户是否可以根据当前的 访问控制 运行该命令。*/
     int acl_keypos;
     int acl_retval = ACLCheckCommandPerm(c, &acl_keypos);
     if (acl_retval != ACL_OK)
     {
+        //如果当前客户端不能使用该命令
         addACLLogEntry(c, acl_retval, acl_keypos, NULL);
         if (acl_retval == ACL_DENIED_CMD)
             rejectCommandFormat(c,
@@ -4057,8 +4069,13 @@ int processCommand(client *c)
 
     /* If cluster is enabled perform the cluster redirection here.
      * However we don't perform the redirection if:
+     * 如果启用了集群，请在此处执行集群重定向。 但是在以下情况，如果我们不执行重定向
+     *
      * 1) The sender of this command is our master.
-     * 2) The command has no key arguments. */
+     * 2) The command has no key arguments. 
+     * 1) 命令的发送人是主节点
+     * 2) 该命令没有关键参数。
+     * */
     if (server.cluster_enabled &&
         !(c->flags & CLIENT_MASTER) &&
         !(c->flags & CLIENT_LUA &&
@@ -4066,6 +4083,7 @@ int processCommand(client *c)
         !(c->cmd->getkeys_proc == NULL && c->cmd->firstkey == 0 &&
           c->cmd->proc != execCommand))
     {
+        //集群重定向
         int hashslot;
         int error_code;
         clusterNode *n = getNodeByQuery(c, c->cmd, c->argv, c->argc,
@@ -4086,7 +4104,8 @@ int processCommand(client *c)
     }
 
     /* Handle the maxmemory directive.
-     *
+     * 处理 maxmemory 指令。
+     
      * Note that we do not want to reclaim memory if we are here re-entering
      * the event loop since there is a busy Lua script running in timeout
      * condition, to avoid mixing the propagation of scripts with the

@@ -1825,11 +1825,10 @@ int processMultibulkBuffer(client *c) {
                 }
                 break;
             }
-
             /* Buffer should also contain \n */
             if (newline-(c->querybuf+c->qb_pos) > (ssize_t)(sdslen(c->querybuf)-c->qb_pos-2))
                 break;
-            //参数    
+            //下一个读取的参数长度取决于'$'后的数字，具体请看上方，如果没读到$开头，说明不是我们需要的东西
             if (c->querybuf[c->qb_pos] != '$') {
                 addReplyErrorFormat(c,
                     "Protocol error: expected '$', got '%c'",
@@ -1837,49 +1836,61 @@ int processMultibulkBuffer(client *c) {
                 setProtocolError("expected $ but got something else",c);
                 return C_ERR;
             }
-
+            //获取下一个参数的长度
             ok = string2ll(c->querybuf+c->qb_pos+1,newline-(c->querybuf+c->qb_pos+1),&ll);
             if (!ok || ll < 0 ||
                 (!(c->flags & CLIENT_MASTER) && ll > server.proto_max_bulk_len)) {
+                //长度解析出错 或 长度小于0 或 客户端不是主节点 或 参数长度大于协议批量长度最大大小。（默认512kb）
                 addReplyError(c,"Protocol error: invalid bulk length");
                 setProtocolError("invalid bulk length",c);
                 return C_ERR;
             } else if (ll > 16384 && authRequired(c)) {
+                //如果参数长度大于16kb，则需要验证
                 addReplyError(c, "Protocol error: unauthenticated bulk length");
                 setProtocolError("unauth bulk length", c);
                 return C_ERR;
             }
-
+            //我们已经读完了完整的一行 以'\r\n'结尾，于是再加2个字节
             c->qb_pos = newline-c->querybuf+2;
+            printf("c->qb_pos:%d\n",c->qb_pos);
+            printf("length:%llu\n",ll);
+            printf("c->querybuf:%s\n",c->querybuf+c->qb_pos);
             if (ll >= PROTO_MBULK_BIG_ARG) {
+                //参数长度大于等于32kb
                 /* If we are going to read a large object from network
                  * try to make it likely that it will start at c->querybuf
                  * boundary so that we can optimize object creation
                  * avoiding a large copy of data.
-                 *
+                 * 如果我们要从网络中读取一个大对象，尽量让它从 c->querybuf 边界开始，
+                 * 这样我们就可以优化对象创建，避免大量数据副本。
                  * But only when the data we have not parsed is less than
                  * or equal to ll+2. If the data length is greater than
                  * ll+2, trimming querybuf is just a waste of time, because
-                 * at this time the querybuf contains not only our bulk. */
+                 * at this time the querybuf contains not only our bulk. 
+                 * 但只有当我们没有解析的数据小于等于ll+2时。 
+                 * 如果数据长度大于ll+2，剪裁querybuf只是浪费时间，因为此时querybuf包含的不仅仅是我们的bulk。*/
                 if (sdslen(c->querybuf)-c->qb_pos <= (size_t)ll+2) {
                     sdsrange(c->querybuf,c->qb_pos,-1);
                     c->qb_pos = 0;
                     /* Hint the sds library about the amount of bytes this string is
-                     * going to contain. */
+                     * going to contain.
+                     提示 sds 库有关此字符串将包含的字节数 */
                     c->querybuf = sdsMakeRoomFor(c->querybuf,ll+2-sdslen(c->querybuf));
                 }
             }
             c->bulklen = ll;
         }
-
-        /* Read bulk argument */
+        printf("sdslen(c->querybuf)-c->qb_pos:%d\n",sdslen(c->querybuf)-c->qb_pos);
+        /* Read bulk argument 读取参数*/
         if (sdslen(c->querybuf)-c->qb_pos < (size_t)(c->bulklen+2)) {
-            /* Not enough data (+2 == trailing \r\n) */
+            /* Not enough data (+2 == trailing \r\n)
+            如果缓冲区的内容已经不够我们所需要的长度 */
             break;
         } else {
             /* Optimization: if the buffer contains JUST our bulk element
              * instead of creating a new object by *copying* the sds we
-             * just use the current sds string. */
+             * just use the current sds string. 
+             * 优化：如果缓冲区只包含我们的块元素，我们直接使用而不是创建一个新的*/
             if (c->qb_pos == 0 &&
                 c->bulklen >= PROTO_MBULK_BIG_ARG &&
                 sdslen(c->querybuf) == (size_t)(c->bulklen+2))
@@ -1892,8 +1903,8 @@ int processMultibulkBuffer(client *c) {
                 c->querybuf = sdsnewlen(SDS_NOINIT,c->bulklen+2);
                 sdsclear(c->querybuf);
             } else {
-                c->argv[c->argc++] =
-                    createStringObject(c->querybuf+c->qb_pos,c->bulklen);
+                //从c->querybuf+c->qb_pos开始读取c->bulklen长度的内容
+                c->argv[c->argc++] = createStringObject(c->querybuf+c->qb_pos,c->bulklen);
                 c->argv_len_sum += c->bulklen;
                 c->qb_pos += c->bulklen+2;
             }
@@ -1949,12 +1960,17 @@ void commandProcessed(client *c) {
 
 /* This function calls processCommand(), but also performs a few sub tasks
  * for the client that are useful in that context:
- *
+ * 此函数调用 processCommand()，但还为客户端执行一些在该上下文中有用的子任务：
+ * 
  * 1. It sets the current client to the client 'c'.
  * 2. calls commandProcessed() if the command was handled.
- *
+ * 1. 它将当前客户端设置为客户端“c”。
+ * 2. 调用commandProcessed函数如果命令已经被处理了
+ * 
  * The function returns C_ERR in case the client was freed as a side effect
- * of processing the command, otherwise C_OK is returned. */
+ * of processing the command, otherwise C_OK is returned. 
+ * 如果客户端在处理命令的时候被释放了，那么函数返回C_ERR否则返回C_OK
+ * */
 int processCommandAndResetClient(client *c) {
     int deadclient = 0;
     server.current_client = c;
@@ -1965,7 +1981,10 @@ int processCommandAndResetClient(client *c) {
     server.current_client = NULL;
     /* freeMemoryIfNeeded may flush slave output buffers. This may
      * result into a slave, that may be the active client, to be
-     * freed. */
+     * freed. 
+     * freeMemoryIfNeeded函数可能会刷新从节点输出缓冲区，
+     * 这可能会导致从节点（可能是活动客户端）被释放。
+     * */
     return deadclient ? C_ERR : C_OK;
 }
 
@@ -2091,6 +2110,7 @@ void processInputBuffer(client *c) {
 
     /* Trim to pos */
     if (c->qb_pos) {
+        //清空缓冲区
         sdsrange(c->querybuf,c->qb_pos,-1);
         c->qb_pos = 0;
     }

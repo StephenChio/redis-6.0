@@ -888,7 +888,7 @@ typedef struct client {
                                the master. */
     size_t querybuf_peak;   /* Recent (100ms or more) peak of querybuf size. #querybuf 大小的最近（100 毫秒或更多）峰值。*/
     int argc;               /* Num of arguments of current command. 命令的参数数量*/
-    robj **argv;            /* Arguments of current command. */
+    robj **argv;            /* Arguments of current command. 当前命令的参数。*/
     size_t argv_len_sum;    /* Sum of lengths of objects in argv list. */
     struct redisCommand *cmd, *lastcmd;  /* Last command executed. */
     user *user;             /* User associated with this connection. If the
@@ -1448,12 +1448,12 @@ struct redisServer {
     int get_ack_from_slaves;            /* If true we send REPLCONF GETACK. */
     /* Limits */
     unsigned int maxclients;            /* Max number of simultaneous clients 最大的客户端数量*/
-    unsigned long long maxmemory;   /* Max number of memory bytes to use */
+    unsigned long long maxmemory;   /* Max number of memory bytes to use 要使用的最大内存字节数*/
     int maxmemory_policy;           /* Policy for key eviction */
     int maxmemory_samples;          /* Precision of random sampling */
     int lfu_log_factor;             /* LFU logarithmic counter factor. */
     int lfu_decay_time;             /* LFU counter decay factor. */
-    long long proto_max_bulk_len;   /* Protocol bulk length maximum size. */
+    long long proto_max_bulk_len;   /* Protocol bulk length maximum size. 协议批量长度最大大小。*/
     int oom_score_adj_base;         /* Base oom_score_adj value, as observed on startup 启动的时候oom_score_adj的大小，oom_score_adj 的取值范围是 -1000～1000，如果设置成-1000，操作系统将不会kill该程序*/
     int oom_score_adj_values[CONFIG_OOM_COUNT];   /* Linux oom_score_adj configuration */
     int oom_score_adj;                            /* If true, oom_score_adj is managed */
