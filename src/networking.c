@@ -1736,13 +1736,17 @@ int processMultibulkBuffer(client *c) {
     char *newline = NULL;
     int ok;
     long long ll;
-    printf("c->multibulklen:%d\n",c->multibulklen);
+    //如果目前待处理的参数数量为0，那么我们有2种情况，1：还没开始解析 2：刚开始解析，还解析不到参数（没获取到完整的内容）
+    //我们试着尝试解析获取第一个'\r'出现的位置newline，因为'\r'代表了一个参数的完整
+    //如果newline==null，那么可能是还没传输到结尾。
+    //那么我们判断已经读取的长度是否已经超过最大限制64kb，如果已经超过限制，那么回复错误
+    //如果我们没读到结尾，也还没有超过限制大小，先返回C_ERR等待更多数据的到来
     if (c->multibulklen == 0) {
         /* The client should have been reset 客户端已经被重置*/
         serverAssertWithInfo(c,NULL,c->argc == 0);
 
         /* Multi bulk length cannot be read without a \r\n 
-        如果没有\r\n，则无法读取多块长度*/
+        如果没有\r\n，则无法读取Multi bulk长度*/
         newline = strchr(c->querybuf+c->qb_pos,'\r');
         printf("newline:%s\n",newline);
         if (newline == NULL) {
@@ -1753,43 +1757,64 @@ int processMultibulkBuffer(client *c) {
             return C_ERR;
         }
 
-        /* Buffer should also contain \n 
-        缓冲区也应该包含\n*/
+        /* Buffer should also contain \n */
+        //判断缓冲区的内容除了包含'\r',是否还包含'\n'，这也是我们需要的
+        //我们从'\r'的地址减去开始解析的地址
         if (newline-(c->querybuf+c->qb_pos) > (ssize_t)(sdslen(c->querybuf)-c->qb_pos-2))
             return C_ERR;
 
         /* We know for sure there is a whole line since newline != NULL,
          * so go ahead and find out the multi bulk length. 
-         我们确信有一整行，因为换行符不是空的，所以继续找出剩下的multi bulk长度 */
+         我们确信有一整行，因为换行符不是空的，所以继续找出剩下的multi bulk长度 
+         multi bulk长度跟在'*'后面，我们需要判断'*'是否存在，如果不存在返回错误 */
         serverAssertWithInfo(c,NULL,c->querybuf[c->qb_pos] == '*');
-        printf("c->querybuf+1+c->qb_pos:%s\n",c->querybuf+1+c->qb_pos);
-        printf("newline-(c->querybuf+1+c->qb_pos):%ld\n",newline-(c->querybuf+1+c->qb_pos));
+
+        //获取multi bulk长度字符串转成long long
+        //multi bulk长度内容在 c->querybuf+1+c->qb_pos 开始连续 newline-(c->querybuf+1+c->qb_pos) 长度
+        //                     '*'开始的下一个地方             '\r'-  '*'开始的下一个地方（就是 multi bulk 的字符串长度）
         ok = string2ll(c->querybuf+1+c->qb_pos,newline-(c->querybuf+1+c->qb_pos),&ll);
         if (!ok || ll > 1024*1024) {
+            //如果参数的长度大于1024kb，返回错误
             addReplyError(c,"Protocol error: invalid multibulk length");
             setProtocolError("invalid mbulk count",c);
             return C_ERR;
         } else if (ll > 10 && authRequired(c)) {
+            //如果参数长度大于10，我们需要验证，验证不通过返回错误
             addReplyError(c, "Protocol error: unauthenticated multibulk length");
             setProtocolError("unauth mbulk count", c);
             return C_ERR;
         }
-
+        //我们已经读完了完整的一行 以'\r\n'结尾，于是再加2个字节
         c->qb_pos = (newline-c->querybuf)+2;
-
+        //如果参数数量为0，我们没什么需要处理的
         if (ll <= 0) return C_OK;
-
+        //我们读取了参数的数量，设置multibulklen，下面循环解析每一个参数直至multibulklen=0
         c->multibulklen = ll;
         /* Setup argv array on client structure 初始化客户端参数数据结构*/
         if (c->argv) zfree(c->argv);
+        //分配multibulklen数量的参数数据结构内存
         c->argv = zmalloc(sizeof(robj*)*c->multibulklen);
+        //目前还没有解析参数内容，设置0
         c->argv_len_sum = 0;
     }
-    printf("c->multibulklen:%d\n",c->multibulklen);
+
+
+    //判断c->multibulklen必须大于0
     serverAssertWithInfo(c,NULL,c->multibulklen > 0);
     while(c->multibulklen) {
-        /* Read bulk length if unknown */
+        /* Read bulk length if unknown 如果c->bulklen 还处于初始化状态，我们还没有处理任何的参数解析*/
         if (c->bulklen == -1) {
+            /**
+             * *3
+             * $3
+             * set
+             * $6
+             * author
+             * $8
+             * codehole
+             * 参数的数量由*后跟随的数字决定，由上面解析所的c->multibulklen
+             */
+            //接着读取下一行'\r'开头的地方
             newline = strchr(c->querybuf+c->qb_pos,'\r');
             if (newline == NULL) {
                 if (sdslen(c->querybuf)-c->qb_pos > PROTO_INLINE_MAX_SIZE) {
@@ -1804,7 +1829,7 @@ int processMultibulkBuffer(client *c) {
             /* Buffer should also contain \n */
             if (newline-(c->querybuf+c->qb_pos) > (ssize_t)(sdslen(c->querybuf)-c->qb_pos-2))
                 break;
-
+            //参数    
             if (c->querybuf[c->qb_pos] != '$') {
                 addReplyErrorFormat(c,
                     "Protocol error: expected '$', got '%c'",
