@@ -378,13 +378,14 @@ int main(int argc, char **argv)
 
 从代码中有几个重要的点需要注意：
 
-1.redis启动命令的第二个参数，如果不以-或者--开头，redis默认认为是配置文件参数，那么它就会通过该参数寻找配置文件，如果出错，则程序会启动失败
+1. redis启动命令的第二个参数，如果不以-或者--开头，redis默认认为是配置文件参数，那么它就会通过该参数寻找配置文件，如果出错，则程序会启动失败
 
-2.redis并没有去默认文件路径寻找配置文件，它的默认配置是写到了redis代码里的，如果你没有指定配置文件，那么它只会根据代码内容初始化配置文件。所谓的默认配置文件，只是它的内容和redis代码里的默认配置是一致的，仅此而已。
+2. redis并没有去默认文件路径寻找配置文件，它的默认配置是写到了redis代码里的，如果你没有指定配置文件，那么它只会根据代码内容初始化配置文件。所谓的默认配置文件，只是它的内容和redis代码里的默认配置是一致的，仅此而已。
 
-3.redis 6.0之后支持了多线程I/O处理客户的信息，但是默认情况下是不开启的，（可能是为了兼容之前运行Redis的单核或者双核CPU服务器）如果需要开启，则需要指定配置文件运行，并且做了相应的配置。在4核cpu以上的机器上，官方都建议我们开启多线程I/O，可以有效提升性能。
+3. redis 6.0之后支持了多线程I/O处理客户的信息，但是默认情况下是不开启的，（可能是为了兼容之前运行Redis的单核或者双核CPU服务器）如果需要开启，则需要指定配置文件运行，并且做了相应的配置。在4核cpu以上的机器上，官方都建议我们开启多线程I/O，可以有效提升性能。
 
-4.Redis在linux机器上建议我们去使用vm.overcommit_memory=1这个配置。意味着"表示内核允许分配所有的物理内存，而不管当前的内存状态如何"，对于Redis这个内存数据库来说，这是它愿意去看到的，但是我们在生产环节上也遇到过一些问题：在运行了k8s集群的机器上（需要强制linux系统关闭 swap（内存交换）来提升性能，避免频繁与硬盘进行内存交换），如果还运行了Redis，那么在高负荷的工作条件下，可能会把物理机器的内存耗尽到不可恢复的状态。
+4. Redis在linux机器上建议我们去使用vm.overcommit_memory=1这个配置。意味着"表示内核允许分配所有的物理内存，而不管当前的内存状态如何"，对于Redis这个内存数据库来说，这是它愿意去看到的，但是我们在生产环节上也遇到过一些问题：在运行了k8s集群的机器上（需要强制linux系统关闭 swap（内存交换）来提升性能，避免频繁与硬盘进行内存交换），如果还运行了Redis，那么在高负荷的工作条件下，可能会把物理机器的内存耗尽到不可恢复的状态。
+
 
 
 
@@ -821,7 +822,7 @@ static int connSocketSetReadHandler(connection *conn, ConnectionCallbackFunc fun
 
 至此我们已经分析完，Redis服务器是如何处理TCP连接请求和建立了请求之后为它分配的数据函数。
 
-
+## 获取缓冲区数据
 
 ### readQueryFromClient
 
@@ -960,7 +961,9 @@ nread = read(fd, s+oldlen, BUFFER_SIZE);
 sdsIncrLen(s, nread);
 ```
 
-我们把上面读取socket内容到字符串做了一个简单的概括，sds字符串的好处。它通过预分配空间的策略，传统c语言拼接字符串的缺点，需要重新开拓足够2块数据存放的空间再把两块数据复制到新空间去。这里sds字符串只使用了一次复制，最后它通过获取时机读取的字节数量，又重新把sds字符串的长度重新修剪成正确的长度，也释放掉没有使用的空间。
+我们把上面读取socket内容到字符串做了一个简单的概括，sds字符串的好处。
+
+它通过预分配空间的策略，传统c语言拼接字符串的缺点，需要重新开拓足够2块数据存放的空间再把两块数据复制到新空间去。这里sds字符串只使用了一次复制，最后它通过获取时机读取的字节数量，又重新把sds字符串的长度重新修剪成正确的长度，也释放掉没有使用的空间。
 
 在读取字符串的时候了解了一下redis的sds，发现学问不少，但是我们目前最重要的任务还是继续分析Redis对客户端数据的处理。
 
@@ -970,33 +973,1171 @@ sdsIncrLen(s, nread);
 
 我们来到processInputBuffer函数：
 
+```c
+/* This function is called every time, in the client structure 'c', there is
+ * more query buffer to process, because we read more data from the socket
+ * or because a client was blocked and later reactivated, so there could be
+ * pending query buffer, already representing a full command, to process. 
+ * 
+ * 每次调用此函数时，在客户端结构“c”中，都会有更多的查询缓冲区要处理，
+ * 因为我们从套接字读取了更多数据，或者因为客户端被阻止并随后重新激活，
+ * 所以可能会有挂起的查询缓冲区要处理，该缓冲区已经代表了完整的命令。
+ * */
+void processInputBuffer(client *c) {
+    /* Keep processing while there is something in the input buffer 当我们读取的数据没有到缓冲区结尾时循环*/
+    while(c->qb_pos < sdslen(c->querybuf)) {
+        /* Return if clients are paused. 如果客户端暂停了，我们返回*/
+        if (!(c->flags & CLIENT_SLAVE) && 
+            !(c->flags & CLIENT_PENDING_READ) && 
+            clientsArePaused()) break;
+
+        /* Immediately abort if the client is in the middle of something.
+        如果客户端正在进行某项阻塞操作，请立即中止 */
+        if (c->flags & CLIENT_BLOCKED) break;
+
+        /* Don't process more buffers from clients that have already pending
+         * commands to execute in c->argv.
+         当客户端已经挂起c->argv中要去执行的命令时，我们不处理来自该客户端的数据 */
+        if (c->flags & CLIENT_PENDING_COMMAND) break;
+
+        /* Don't process input from the master while there is a busy script
+         * condition on the slave. We want just to accumulate the replication
+         * stream (instead of replying -BUSY like we do with other clients) and
+         * later resume the processing. 
+         * 当从节点上的脚本繁忙时，不要处理来自主节点的输入。
+         * 我们只想积累复制流（而不是像其他客户端那样忙着回复），然后继续处理。*/
+        if (server.lua_timedout && c->flags & CLIENT_MASTER) break;
+
+        /* CLIENT_CLOSE_AFTER_REPLY closes the connection once the reply is
+         * written to the client. Make sure to not let the reply grow after
+         * this flag has been set (i.e. don't process more commands).
+         * CLIENT_CLOSE_AFTER_REPLY在将回复写入客户端后关闭连接。
+         * 确保在设置此标志后，回复不会增长（即不要处理更多命令）。
+         * The same applies for clients we want to terminate ASAP. 
+         * 这同样适用于我们希望尽快终止的客户*/
+        if (c->flags & (CLIENT_CLOSE_AFTER_REPLY|CLIENT_CLOSE_ASAP)) break;
+
+        /* Determine request type when unknown. 确定请求类型 */
+        if (!c->reqtype) {
+            if (c->querybuf[c->qb_pos] == '*') {
+                //符合RESP协议的命令
+                printf("request:PROTO_REQ_MULTIBULK\n");
+                c->reqtype = PROTO_REQ_MULTIBULK;
+            } else {
+                //管道类型命令
+                printf("request:PROTO_REQ_INLINE\n");
+                c->reqtype = PROTO_REQ_INLINE;
+            }
+        }
+
+        if (c->reqtype == PROTO_REQ_INLINE) {
+            if (processInlineBuffer(c) != C_OK) break;
+            /* If the Gopher mode and we got zero or one argument, process
+             * the request in Gopher mode. To avoid data race, Redis won't
+             * support Gopher if enable io threads to read queries. 
+             * 如果Gopher模式和我们得到零或一个参数，则在Gopher模式下处理请求。
+             * 为了避免数据竞争，如果允许io线程读取查询，Redis将不支持Gopher*/
+            if (server.gopher_enabled && !server.io_threads_do_reads &&
+                ((c->argc == 1 && ((char*)(c->argv[0]->ptr))[0] == '/') ||
+                  c->argc == 0))
+            {
+                processGopherRequest(c);
+                resetClient(c);
+                c->flags |= CLIENT_CLOSE_AFTER_REPLY;
+                break;
+            }
+        } else if (c->reqtype == PROTO_REQ_MULTIBULK) {
+            //对于RESP协议命令，我们使用processMultibulkBuffer处理
+            if (processMultibulkBuffer(c) != C_OK) break;
+        } else {
+            serverPanic("Unknown request type");
+        }
+
+        /* Multibulk processing could see a <= 0 length. 
+        多批量处理的长度可能小于等于0。*/
+        if (c->argc == 0) {
+            resetClient(c);
+        } else {
+            /* If we are in the context of an I/O thread, we can't really
+             * execute the command here. All we can do is to flag the client
+             * as one that needs to process the command. 
+             * 如果我们在一个输入/输出线程的上下文中，我们就不能真正执行这里的命令。
+             * 我们所能做的就是将客户端标记为需要处理命令的客户端*/
+            if (c->flags & CLIENT_PENDING_READ) {
+                c->flags |= CLIENT_PENDING_COMMAND;
+                break;
+            }
+
+            /* We are finally ready to execute the command. 
+            我们最后读取和执行程序*/
+            if (processCommandAndResetClient(c) == C_ERR) {
+                /* If the client is no longer valid, we avoid exiting this
+                 * loop and trimming the client buffer later. So we return
+                 * ASAP in that case. 
+                 * 如果客户端不再有效，我们将避免退出此循环，并在以后修剪客户端缓冲区。
+                 * 在这种情况下，我们会尽快返回。*/
+                return;
+            }
+        }
+    }
+
+    /* Trim to pos */
+    if (c->qb_pos) {
+        //清空缓冲区
+        sdsrange(c->querybuf,c->qb_pos,-1);
+        c->qb_pos = 0;
+    }
+}
+```
+
+当我们读取的长度小于缓冲区长度时，进入循环。
+
+在这里我们做的重要的一件事就是判断协议类型，主要有RESP协议的命令，还有管道命令类型，接收到其他类型的数据我们不会进行处理。
+
+当我们收到符合RESP协议的内容时候，调用processMultibulkBuffer函数进行处理，当我们收到管道命令类型的时候，我们调用processInlineBuffer函数进行处理。
+
+我们着重研究processMultibulkBuffer函数
+
+### processMultibulkBuffer
+
+```c
+/* Process the query buffer for client 'c', setting up the client argument
+ * vector for command execution. Returns C_OK if after running the function
+ * the client has a well-formed ready to be processed command, otherwise
+ * C_ERR if there is still to read more buffer to get the full command.
+ * The function also returns C_ERR when there is a protocol error: in such a
+ * case the client structure is setup to reply with the error and close
+ * the connection.
+ * 处理客户端“c”的查询缓冲区，设置用于执行命令的客户端参数向量。
+ * 如果在运行该函数后，客户端有一个格式良好的准备处理命令，则返回C_OK，
+ * 否则，如果仍然需要读取更多缓冲区以获取完整命令，则返回C_ERR。
+ * 当出现协议错误时，该函数还返回C_ERR
+ * 在这种情况下，客户端结构被设置为用错误回复并关闭连接
+ * 
+ * This function is called if processInputBuffer() detects that the next
+ * command is in RESP format, so the first byte in the command is found
+ * to be '*'. Otherwise for inline commands processInlineBuffer() is called. 
+ * 如果processInputBuffer（）检测到下一个命令为RESP格式，则调用此函数，
+ * 因此发现命令中的第一个字节为“*”。否则，对于内联命令，将调用processInlineBuffer()。*/
+int processMultibulkBuffer(client *c) {
+    printf("processMultibulkBuffer\n");
+    char *newline = NULL;
+    int ok;
+    long long ll;
+    //如果目前待处理的参数数量为0，那么我们有2种情况，1：还没开始解析 2：刚开始解析，还解析不到参数（没获取到完整的内容）
+    //我们试着尝试解析获取第一个'\r'出现的位置newline，因为'\r'代表了一个参数的完整
+    //如果newline==null，那么可能是还没传输到结尾。
+    //那么我们判断已经读取的长度是否已经超过最大限制64kb，如果已经超过限制，那么回复错误
+    //如果我们没读到结尾，也还没有超过限制大小，先返回C_ERR等待更多数据的到来
+    if (c->multibulklen == 0) {
+        /* The client should have been reset 客户端已经被重置*/
+        serverAssertWithInfo(c,NULL,c->argc == 0);
+
+        /* Multi bulk length cannot be read without a \r\n 
+        如果没有\r\n，则无法读取Multi bulk长度*/
+        newline = strchr(c->querybuf+c->qb_pos,'\r');
+        printf("newline:%s\n",newline);
+        if (newline == NULL) {
+            if (sdslen(c->querybuf)-c->qb_pos > PROTO_INLINE_MAX_SIZE) {
+                addReplyError(c,"Protocol error: too big mbulk count string");
+                setProtocolError("too big mbulk count string",c);
+            }
+            return C_ERR;
+        }
+
+        /* Buffer should also contain \n */
+        //判断缓冲区的内容除了包含'\r',是否还包含'\n'，这也是我们需要的
+        //我们从'\r'的地址减去开始解析的地址
+        if (newline-(c->querybuf+c->qb_pos) > (ssize_t)(sdslen(c->querybuf)-c->qb_pos-2))
+            return C_ERR;
+
+        /* We know for sure there is a whole line since newline != NULL,
+         * so go ahead and find out the multi bulk length. 
+         我们确信有一整行，因为换行符不是空的，所以继续找出剩下的multi bulk长度 
+         multi bulk长度跟在'*'后面，我们需要判断'*'是否存在，如果不存在返回错误 */
+        serverAssertWithInfo(c,NULL,c->querybuf[c->qb_pos] == '*');
+
+        //获取multi bulk长度字符串转成long long
+        //multi bulk长度内容在 c->querybuf+1+c->qb_pos 开始连续 newline-(c->querybuf+1+c->qb_pos) 长度
+        //                     '*'开始的下一个地方             '\r'-  '*'开始的下一个地方（就是 multi bulk 的字符串长度）
+        ok = string2ll(c->querybuf+1+c->qb_pos,newline-(c->querybuf+1+c->qb_pos),&ll);
+        if (!ok || ll > 1024*1024) {
+            //如果参数的长度大于1024kb，返回错误
+            addReplyError(c,"Protocol error: invalid multibulk length");
+            setProtocolError("invalid mbulk count",c);
+            return C_ERR;
+        } else if (ll > 10 && authRequired(c)) {
+            //如果参数长度大于10，我们需要验证，验证不通过返回错误
+            addReplyError(c, "Protocol error: unauthenticated multibulk length");
+            setProtocolError("unauth mbulk count", c);
+            return C_ERR;
+        }
+        //我们已经读完了完整的一行 以'\r\n'结尾，于是再加2个字节
+        c->qb_pos = (newline-c->querybuf)+2;
+        //如果参数数量为0，我们没什么需要处理的
+        if (ll <= 0) return C_OK;
+        //我们读取了参数的数量，设置multibulklen，下面循环解析每一个参数直至multibulklen=0
+        c->multibulklen = ll;
+        /* Setup argv array on client structure 初始化客户端参数数据结构*/
+        if (c->argv) zfree(c->argv);
+        //分配multibulklen数量的参数数据结构内存
+        c->argv = zmalloc(sizeof(robj*)*c->multibulklen);
+        //目前还没有解析参数内容，设置0
+        c->argv_len_sum = 0;
+    }
+
+
+    //判断c->multibulklen必须大于0
+    serverAssertWithInfo(c,NULL,c->multibulklen > 0);
+    while(c->multibulklen) {
+        /* Read bulk length if unknown 如果c->bulklen 还处于初始化状态，我们还没有处理任何的参数解析*/
+        if (c->bulklen == -1) {
+            /**
+             * *3
+             * $3
+             * set
+             * $6
+             * author
+             * $8
+             * codehole
+             * 参数的数量由*后跟随的数字决定，由上面解析所的c->multibulklen
+             */
+            //接着读取下一行'\r'开头的地方
+            newline = strchr(c->querybuf+c->qb_pos,'\r');
+            if (newline == NULL) {
+                if (sdslen(c->querybuf)-c->qb_pos > PROTO_INLINE_MAX_SIZE) {
+                    addReplyError(c,
+                        "Protocol error: too big bulk count string");
+                    setProtocolError("too big bulk count string",c);
+                    return C_ERR;
+                }
+                break;
+            }
+            /* Buffer should also contain \n */
+            if (newline-(c->querybuf+c->qb_pos) > (ssize_t)(sdslen(c->querybuf)-c->qb_pos-2))
+                break;
+            //下一个读取的参数长度取决于'$'后的数字，具体请看上方，如果没读到$开头，说明不是我们需要的东西
+            if (c->querybuf[c->qb_pos] != '$') {
+                addReplyErrorFormat(c,
+                    "Protocol error: expected '$', got '%c'",
+                    c->querybuf[c->qb_pos]);
+                setProtocolError("expected $ but got something else",c);
+                return C_ERR;
+            }
+            //获取下一个参数的长度
+            ok = string2ll(c->querybuf+c->qb_pos+1,newline-(c->querybuf+c->qb_pos+1),&ll);
+            if (!ok || ll < 0 ||
+                (!(c->flags & CLIENT_MASTER) && ll > server.proto_max_bulk_len)) {
+                //长度解析出错 或 长度小于0 或 客户端不是主节点 或 参数长度大于协议批量长度最大大小。（默认512kb）
+                addReplyError(c,"Protocol error: invalid bulk length");
+                setProtocolError("invalid bulk length",c);
+                return C_ERR;
+            } else if (ll > 16384 && authRequired(c)) {
+                //如果参数长度大于16kb，则需要验证
+                addReplyError(c, "Protocol error: unauthenticated bulk length");
+                setProtocolError("unauth bulk length", c);
+                return C_ERR;
+            }
+            //我们已经读完了完整的一行 以'\r\n'结尾，于是再加2个字节
+            c->qb_pos = newline-c->querybuf+2;
+            printf("c->qb_pos:%d\n",c->qb_pos);
+            printf("length:%llu\n",ll);
+            printf("c->querybuf:%s\n",c->querybuf+c->qb_pos);
+            if (ll >= PROTO_MBULK_BIG_ARG) {
+                //参数长度大于等于32kb
+                /* If we are going to read a large object from network
+                 * try to make it likely that it will start at c->querybuf
+                 * boundary so that we can optimize object creation
+                 * avoiding a large copy of data.
+                 * 如果我们要从网络中读取一个大对象，尽量让它从 c->querybuf 边界开始，
+                 * 这样我们就可以优化对象创建，避免大量数据副本。
+                 * But only when the data we have not parsed is less than
+                 * or equal to ll+2. If the data length is greater than
+                 * ll+2, trimming querybuf is just a waste of time, because
+                 * at this time the querybuf contains not only our bulk. 
+                 * 但只有当我们没有解析的数据小于等于ll+2时。 
+                 * 如果数据长度大于ll+2，剪裁querybuf只是浪费时间，因为此时querybuf包含的不仅仅是我们的bulk。*/
+                if (sdslen(c->querybuf)-c->qb_pos <= (size_t)ll+2) {
+                    sdsrange(c->querybuf,c->qb_pos,-1);
+                    c->qb_pos = 0;
+                    /* Hint the sds library about the amount of bytes this string is
+                     * going to contain.
+                     提示 sds 库有关此字符串将包含的字节数 */
+                    c->querybuf = sdsMakeRoomFor(c->querybuf,ll+2-sdslen(c->querybuf));
+                }
+            }
+            c->bulklen = ll;
+        }
+        printf("sdslen(c->querybuf)-c->qb_pos:%d\n",sdslen(c->querybuf)-c->qb_pos);
+        /* Read bulk argument 读取参数*/
+        if (sdslen(c->querybuf)-c->qb_pos < (size_t)(c->bulklen+2)) {
+            /* Not enough data (+2 == trailing \r\n)
+            如果缓冲区的内容已经不够我们所需要的长度 */
+            break;
+        } else {
+            /* Optimization: if the buffer contains JUST our bulk element
+             * instead of creating a new object by *copying* the sds we
+             * just use the current sds string. 
+             * 优化：如果缓冲区只包含我们的块元素，我们直接使用而不是创建一个新的*/
+            if (c->qb_pos == 0 &&
+                c->bulklen >= PROTO_MBULK_BIG_ARG &&
+                sdslen(c->querybuf) == (size_t)(c->bulklen+2))
+            {
+                c->argv[c->argc++] = createObject(OBJ_STRING,c->querybuf);
+                c->argv_len_sum += c->bulklen;
+                sdsIncrLen(c->querybuf,-2); /* remove CRLF */
+                /* Assume that if we saw a fat argument we'll see another one
+                 * likely... */
+                c->querybuf = sdsnewlen(SDS_NOINIT,c->bulklen+2);
+                sdsclear(c->querybuf);
+            } else {
+                //从c->querybuf+c->qb_pos开始读取c->bulklen长度的内容
+                c->argv[c->argc++] = createStringObject(c->querybuf+c->qb_pos,c->bulklen);
+                c->argv_len_sum += c->bulklen;
+                c->qb_pos += c->bulklen+2;
+            }
+            c->bulklen = -1;
+            c->multibulklen--;
+        }
+    }
+
+    /* We're done when c->multibulk == 0 */
+    if (c->multibulklen == 0) return C_OK;
+
+    /* Still not ready to process the command */
+    return C_ERR;
+}
+```
+
+processMultibulkBuffer函数内容很长，但是做的事情只有一件，就是把协议里面的参数提取出来，赋值到客户端参数列表里。
+
+运行完processMultibulkBuffer函数之后，客户端的c->argv值会变成一个参数数组，c->argv_len_sum的值等于参数的数量。
+
+c->qb_pos的长度如果等于c->querybuf的长度，证明我们已经解析完缓冲区的所有内容。
+
+那么我们完成了客户端参数的提取之后，会重新回到processInputBuffer函数里面执行processCommandAndResetClient函数，顾名思义，应该就是准备处理命令了。
+
+### processCommandAndResetClient
+
+```c
+/* This function calls processCommand(), but also performs a few sub tasks
+ * for the client that are useful in that context:
+ * 此函数调用 processCommand()，但还为客户端执行一些在该上下文中有用的子任务：
+ * 
+ * 1. It sets the current client to the client 'c'.
+ * 2. calls commandProcessed() if the command was handled.
+ * 1. 它将当前客户端设置为客户端“c”。
+ * 2. 调用commandProcessed函数如果命令已经被处理了
+ * 
+ * The function returns C_ERR in case the client was freed as a side effect
+ * of processing the command, otherwise C_OK is returned. 
+ * 如果客户端在处理命令的时候被释放了，那么函数返回C_ERR否则返回C_OK
+ * */
+int processCommandAndResetClient(client *c) {
+    int deadclient = 0;
+    server.current_client = c;
+    if (processCommand(c) == C_OK) {
+        commandProcessed(c);
+    }
+    if (server.current_client == NULL) deadclient = 1;
+    server.current_client = NULL;
+    /* freeMemoryIfNeeded may flush slave output buffers. This may
+     * result into a slave, that may be the active client, to be
+     * freed. 
+     * freeMemoryIfNeeded函数可能会刷新从节点输出缓冲区，
+     * 这可能会导致从节点（可能是活动客户端）被释放。
+     * */
+    return deadclient ? C_ERR : C_OK;
+}
+```
+
+在processCommandAndResetClient函数中有两个重要的方法，分别是processCommand和commandProcessed虽然它们非常相识，但是一个是执行命令，一个是执行完命令之后的一些收尾。
+
+这个函数实在太短了，我们先看到processCommand
+
+## 获取到具体的命令
+
+### processCommand
+
+```C
+/* If this function gets called we already read a whole
+ * command, arguments are in the client argv/argc fields.
+ * processCommand() execute the command or prepare the
+ * server for a bulk read from the client.
+ * 如果调用此函数，表明我们已经读取了整个命令，
+ * 参数位于客户端 argv/argc 字段中。
+ * processCommand() 执行命令或准备从客户端进行批量读取。
+ *
+ * If C_OK is returned the client is still alive and valid and
+ * other operations can be performed by the caller. Otherwise
+ * if C_ERR is returned the client was destroyed (i.e. after QUIT).
+ * 如果返回 C_OK，则客户端仍然活着且有效，调用者可以执行其他操作。
+ * 否则，如果返回 C_ERR，则客户端被销毁（即在 QUIT 之后）。*/
+int processCommand(client *c)
+{
+    //省略
+     c->cmd = c->lastcmd = lookupCommand(c->argv[0]->ptr);
+    /* Exec the command 执行命令*/
+    if (c->flags & CLIENT_MULTI && c->cmd->proc != execCommand && c->cmd->proc != discardCommand && c->cmd->proc != multiCommand && c->cmd->proc != watchCommand)
+    {
+        //此客户端处于 MULTI 事务上下文中，我们入队命令，让命令原子执行
+        queueMultiCommand(c);
+        addReply(c, shared.queued);
+    }
+    else
+    {
+        //执行单个命令
+        call(c, CMD_CALL_FULL);
+        c->woff = server.master_repl_offset;
+        if (listLength(server.ready_keys))
+            handleClientsBlockedOnKeys();
+    }
+    return C_OK;
+}
+```
+
+这个函数实在是太长了，完整版放在这里确实是不合适，我们会把它一些非核心的内容做一些简略。
+
+我们省略了以下内容：
+
+1. 判断是否是quit命令，做一些相对应的操作。
+2. 查找命令并检查错误情况，例如错误的数量、错误的命令名称。c->cmd会被赋值成系统执行的命令。
+3. 判断用户是否有权限执行命令，有一些命令不需要权限也可以执行例如auth，hello。
+4. 如果启用了集群，我们把该命令重定向节点进行执行。
+5. 检查内存是否超过最大限制可用大小，根据情况执行内存淘汰算法，如果还是不能腾出有效空间，拒绝写入命令。
+6. Redis6.0新特性之客户端缓存（这个我们可以单独介绍）。
+7. 当磁盘出现问题和本节点是主节点时，不接收写入命令。
+8. 当我们没有足够的从节点符合我们配置的最小写入从节点选项时，不接收写入命令。
+9. 判断如果是只读从节点，则不接收写入命令。
+
+来到函数的最后我们看到分别有2个处理的方法，一个是queueMultiCommand，是处理事务的，它会把事务里的命令入队执行，同时执行，保证原子性，只能同时成功或者失败。另一个方法是call，call函数是执行单个命令的方法。在这里我们先不讨论redis事务的处理，我们先关注单一命令的执行。我们来到call函数
+
+## 执行命令
+
+### call
+
+```c
+void call(client *c, int flags)
+{
+    long long dirty;
+    ustime_t start, duration;
+    int client_old_flags = c->flags;
+    struct redisCommand *real_cmd = c->cmd;
+
+    /* Send the command to clients in MONITOR mode if applicable.
+     * Administrative commands are considered too dangerous to be shown.
+     * 如果适用，以 MONITOR 模式将命令发送给客户端。管理命令被认为太危险而无法显示。
+     * */
+    if (listLength(server.monitors) && !server.loading && !(c->cmd->flags & (CMD_SKIP_MONITOR | CMD_ADMIN)))
+    {
+        replicationFeedMonitors(c, server.monitors, c->db->id, c->argv, c->argc);
+    }
+
+    /* Initialization: clear the flags that must be set by the command on
+     * demand, and initialize the array for additional commands propagation. 
+     * 初始化：清除必须由命令按需设置的标志，并初始化数组以进行其他命令传播。
+     */
+    c->flags &= ~(CLIENT_FORCE_AOF | CLIENT_FORCE_REPL | CLIENT_PREVENT_PROP);
+    // 额外的命令传播
+    redisOpArray prev_also_propagate = server.also_propagate;
+    // 初始化额外的命令传播
+    redisOpArrayInit(&server.also_propagate);
+
+    /* Call the command. 执行命令*/
+    //获取上次保存前所有数据变动的长度
+    dirty = server.dirty;
+
+    /* Update cache time, in case we have nested calls we want to
+     * update only on the first call
+     更新缓存时间，如果我们有嵌套调用，我们只想在第一次调用时更新 */
+    if (server.fixed_time_expire++ == 0)
+    {
+        updateCachedTime(0);
+    }
+
+    start = server.ustime;
+    //执行命令
+    c->cmd->proc(c);
+    duration = ustime() - start;
+    dirty = server.dirty - dirty;
+    if (dirty < 0)
+        dirty = 0;
+
+    /* After executing command, we will close the client after writing entire
+     * reply if it is set 'CLIENT_CLOSE_AFTER_COMMAND' flag. */
+    if (c->flags & CLIENT_CLOSE_AFTER_COMMAND)
+    {
+        c->flags &= ~CLIENT_CLOSE_AFTER_COMMAND;
+        c->flags |= CLIENT_CLOSE_AFTER_REPLY;
+    }
+
+    /* When EVAL is called loading the AOF we don't want commands called
+     * from Lua to go into the slowlog or to populate statistics. */
+    if (server.loading && c->flags & CLIENT_LUA)
+        flags &= ~(CMD_CALL_SLOWLOG | CMD_CALL_STATS);
+
+    /* If the caller is Lua, we want to force the EVAL caller to propagate
+     * the script if the command flag or client flag are forcing the
+     * propagation. */
+    if (c->flags & CLIENT_LUA && server.lua_caller)
+    {
+        if (c->flags & CLIENT_FORCE_REPL)
+            server.lua_caller->flags |= CLIENT_FORCE_REPL;
+        if (c->flags & CLIENT_FORCE_AOF)
+            server.lua_caller->flags |= CLIENT_FORCE_AOF;
+    }
+
+    /* Log the command into the Slow log if needed, and populate the
+     * per-command statistics that we show in INFO commandstats. */
+    if (flags & CMD_CALL_SLOWLOG && !(c->cmd->flags & CMD_SKIP_SLOWLOG))
+    {
+        char *latency_event = (c->cmd->flags & CMD_FAST) ? "fast-command" : "command";
+        latencyAddSampleIfNeeded(latency_event, duration / 1000);
+        slowlogPushEntryIfNeeded(c, c->argv, c->argc, duration);
+    }
+
+    if (flags & CMD_CALL_STATS)
+    {
+        /* use the real command that was executed (cmd and lastamc) may be
+         * different, in case of MULTI-EXEC or re-written commands such as
+         * EXPIRE, GEOADD, etc. */
+        real_cmd->microseconds += duration;
+        real_cmd->calls++;
+    }
+
+    /* Propagate the command into the AOF and replication link */
+    if (flags & CMD_CALL_PROPAGATE &&
+        (c->flags & CLIENT_PREVENT_PROP) != CLIENT_PREVENT_PROP)
+    {
+        int propagate_flags = PROPAGATE_NONE;
+
+        /* Check if the command operated changes in the data set. If so
+         * set for replication / AOF propagation. */
+        if (dirty)
+            propagate_flags |= (PROPAGATE_AOF | PROPAGATE_REPL);
+
+        /* If the client forced AOF / replication of the command, set
+         * the flags regardless of the command effects on the data set. */
+        if (c->flags & CLIENT_FORCE_REPL)
+            propagate_flags |= PROPAGATE_REPL;
+        if (c->flags & CLIENT_FORCE_AOF)
+            propagate_flags |= PROPAGATE_AOF;
+
+        /* However prevent AOF / replication propagation if the command
+         * implementation called preventCommandPropagation() or similar,
+         * or if we don't have the call() flags to do so. */
+        if (c->flags & CLIENT_PREVENT_REPL_PROP ||
+            !(flags & CMD_CALL_PROPAGATE_REPL))
+            propagate_flags &= ~PROPAGATE_REPL;
+        if (c->flags & CLIENT_PREVENT_AOF_PROP ||
+            !(flags & CMD_CALL_PROPAGATE_AOF))
+            propagate_flags &= ~PROPAGATE_AOF;
+
+        /* Call propagate() only if at least one of AOF / replication
+         * propagation is needed. Note that modules commands handle replication
+         * in an explicit way, so we never replicate them automatically. */
+        if (propagate_flags != PROPAGATE_NONE && !(c->cmd->flags & CMD_MODULE))
+            propagate(c->cmd, c->db->id, c->argv, c->argc, propagate_flags);
+    }
+
+    /* Restore the old replication flags, since call() can be executed
+     * recursively. */
+    c->flags &= ~(CLIENT_FORCE_AOF | CLIENT_FORCE_REPL | CLIENT_PREVENT_PROP);
+    c->flags |= client_old_flags &
+                (CLIENT_FORCE_AOF | CLIENT_FORCE_REPL | CLIENT_PREVENT_PROP);
+
+    /* Handle the alsoPropagate() API to handle commands that want to propagate
+     * multiple separated commands. Note that alsoPropagate() is not affected
+     * by CLIENT_PREVENT_PROP flag. */
+    if (server.also_propagate.numops)
+    {
+        int j;
+        redisOp *rop;
+
+        if (flags & CMD_CALL_PROPAGATE)
+        {
+            int multi_emitted = 0;
+            /* Wrap the commands in server.also_propagate array,
+             * but don't wrap it if we are already in MULTI context,
+             * in case the nested MULTI/EXEC.
+             *
+             * And if the array contains only one command, no need to
+             * wrap it, since the single command is atomic. */
+            if (server.also_propagate.numops > 1 &&
+                !(c->cmd->flags & CMD_MODULE) &&
+                !(c->flags & CLIENT_MULTI) &&
+                !(flags & CMD_CALL_NOWRAP))
+            {
+                execCommandPropagateMulti(c);
+                multi_emitted = 1;
+            }
+
+            for (j = 0; j < server.also_propagate.numops; j++)
+            {
+                rop = &server.also_propagate.ops[j];
+                int target = rop->target;
+                /* Whatever the command wish is, we honor the call() flags. */
+                if (!(flags & CMD_CALL_PROPAGATE_AOF))
+                    target &= ~PROPAGATE_AOF;
+                if (!(flags & CMD_CALL_PROPAGATE_REPL))
+                    target &= ~PROPAGATE_REPL;
+                if (target)
+                    propagate(rop->cmd, rop->dbid, rop->argv, rop->argc, target);
+            }
+
+            if (multi_emitted)
+            {
+                execCommandPropagateExec(c);
+            }
+        }
+        redisOpArrayFree(&server.also_propagate);
+    }
+    server.also_propagate = prev_also_propagate;
+
+    /* If the client has keys tracking enabled for client side caching,
+     * make sure to remember the keys it fetched via this command. */
+    if (c->cmd->flags & CMD_READONLY)
+    {
+        client *caller = (c->flags & CLIENT_LUA && server.lua_caller) ? server.lua_caller : c;
+        if (caller->flags & CLIENT_TRACKING &&
+            !(caller->flags & CLIENT_TRACKING_BCAST))
+        {
+            trackingRememberKeys(caller);
+        }
+    }
+
+    server.fixed_time_expire--;
+    server.stat_numcommands++;
+
+    /* Record peak memory after each command and before the eviction that runs
+     * before the next command. */
+    size_t zmalloc_used = zmalloc_used_memory();
+    if (zmalloc_used > server.stat_peak_memory)
+        server.stat_peak_memory = zmalloc_used;
+}
+```
+
+不同于它的名称，call函数里的内容还是一如既往的冗长，为了找到最核心的路径，我们还得抽丝剥茧。
+
+我们在processCommand函数里已经找到，c->cmd已经通过名字找到了真正需要我们执行的命令，例如set 或者 get 这些命令。
+
+redis已经将命令函数赋值给c->cmd，我们在call方法中，c->cmd->proc(c)就是真正执行具体命令的地方。
+
+执行完函数c->cmd->proc(c)之后，我们判断是否增加了内容（set会增加内容，delete会减少内容），根据内容的增加与否来执行一些AOF的相关持久化工作。
+
+除此之外，还会记录命令的执行时间duration，通过判断duration是否大于配置中需要记录慢日志的时间，来追加一次慢日志记录。
+
+我们暂时不梳理特定的命令实现（set，get这些），我们会在后面专门讨论，我们姑且认为我们已经讨论过这些内容了，我们执行完一个命令之后，我们来到commandProcessed函数实现。
+
+### commandProcessed
+
+```c
+/* Perform necessary tasks after a command was executed:
+ *
+ * 1. The client is reset unless there are reasons to avoid doing it.
+ * 2. In the case of master clients, the replication offset is updated.
+ * 3. Propagate commands we got from our master to replicas down the line. 
+ * 
+ * 1.客户端会被重置，除非有什么原因阻止我们这样做。
+ * 2.如果是在主节点下，可复制偏移量会被更新
+ * 3.将我们从主节点获得的命令传播到从节点。
+ * 
+ * */
+void commandProcessed(client *c) {
+    long long prev_offset = c->reploff;
+    if (c->flags & CLIENT_MASTER && !(c->flags & CLIENT_MULTI)) {
+        /* Update the applied replication offset of our master. */
+        c->reploff = c->read_reploff - sdslen(c->querybuf) + c->qb_pos;
+    }
+
+    /* Don't reset the client structure for clients blocked in a
+     * module blocking command, so that the reply callback will
+     * still be able to access the client argv and argc field.
+     * The client will be reset in unblockClientFromModule(). */
+    if (!(c->flags & CLIENT_BLOCKED) ||
+        c->btype != BLOCKED_MODULE)
+    {
+        resetClient(c);
+    }
+
+    /* If the client is a master we need to compute the difference
+     * between the applied offset before and after processing the buffer,
+     * to understand how much of the replication stream was actually
+     * applied to the master state: this quantity, and its corresponding
+     * part of the replication stream, will be propagated to the
+     * sub-replicas and to the replication backlog. */
+    if (c->flags & CLIENT_MASTER) {
+        long long applied = c->reploff - prev_offset;
+        if (applied) {
+            replicationFeedSlavesFromMasterStream(server.slaves,
+                    c->pending_querybuf, applied);
+            sdsrange(c->pending_querybuf,applied,-1);
+        }
+    }
+}
+```
+
+commandProcessed函数负责的工作已经被它写在函数名上了
+
+ 1. 客户端会被重置，除非有什么原因阻止我们这样做。
+ 2. 如果是在主节点下，可复制偏移量会被更新
+ 3. 将我们从主节点获得的命令传播到从节点。
+
+## 回复
+
+```c
+void setGenericCommand(client *c, int flags, robj *key, robj *val, robj *expire, int unit, robj *ok_reply, robj *abort_reply) {
+    long long milliseconds = 0; /* initialized to avoid any harmness warning 初始化以避免任何危害警告*/
+
+    if (expire) {
+        //如果有过期时间设置，把过期时间转换成long long 存放到milliseconds，如果我们需要的是秒，则milliseconds*1000
+        if (getLongLongFromObjectOrReply(c, expire, &milliseconds, NULL) != C_OK)
+            return;
+        if (milliseconds <= 0) {
+            //如果过期时间是负数
+            addReplyErrorFormat(c,"invalid expire time in %s",c->cmd->name);
+            return;
+        }
+        if (unit == UNIT_SECONDS) milliseconds *= 1000;
+    }
+
+    if ((flags & OBJ_SET_NX && lookupKeyWrite(c->db,key) != NULL) || (flags & OBJ_SET_XX && lookupKeyWrite(c->db,key) == NULL))
+    {
+        //不满足NX或XX
+        addReply(c, abort_reply ? abort_reply : shared.null[c->resp]);
+        return;
+    }
+    genericSetKey(c,c->db,key,val,flags & OBJ_SET_KEEPTTL,1);
+    //set操作把 存储上次保存前所有数据变动的长度 + 1
+    server.dirty++;
+    //设置过期时间
+    if (expire) setExpire(c,c->db,key,mstime()+milliseconds);
+    notifyKeyspaceEvent(NOTIFY_STRING,"set",key,c->db->id);
+    if (expire) notifyKeyspaceEvent(NOTIFY_GENERIC,
+        "expire",key,c->db->id);
+    addReply(c, ok_reply ? ok_reply : shared.ok);
+}
+```
+
+Redis会在执行具体的命令的时候根据情况调用addReply函数对客户端进行回复，虽然我们还没有开始分析set命令，我们可以快速看一下做完set操作之后的addReply操作。
+
+### addReply
+
+```c
+/* Add the object 'obj' string representation to the client output buffer. 
+将对象“obj”字符串表示添加到客户端输出缓冲区。*/
+void addReply(client *c, robj *obj) {
+    if (prepareClientToWrite(c) != C_OK) return;
+
+    if (sdsEncodedObject(obj)) {
+        if (_addReplyToBuffer(c,obj->ptr,sdslen(obj->ptr)) != C_OK)
+            _addReplyProtoToList(c,obj->ptr,sdslen(obj->ptr));
+    } else if (obj->encoding == OBJ_ENCODING_INT) {
+        /* For integer encoded strings we just convert it into a string
+         * using our optimized function, and attach the resulting string
+         * to the output buffer. */
+        char buf[32];
+        size_t len = ll2string(buf,sizeof(buf),(long)obj->ptr);
+        if (_addReplyToBuffer(c,buf,len) != C_OK)
+            _addReplyProtoToList(c,buf,len);
+    } else {
+        serverPanic("Wrong obj->encoding in addReply()");
+    }
+}
+```
+
+### _addReplyToBuffer
+
+```c
+int _addReplyToBuffer(client *c, const char *s, size_t len) {
+    size_t available = sizeof(c->buf)-c->bufpos;
+
+    if (c->flags & CLIENT_CLOSE_AFTER_REPLY) return C_OK;
+
+    /* If there already are entries in the reply list, we cannot
+     * add anything more to the static buffer. */
+    if (listLength(c->reply) > 0) return C_ERR;
+
+    /* Check that the buffer has enough space available for this string. */
+    if (len > available) return C_ERR;
+
+    memcpy(c->buf+c->bufpos,s,len);
+    c->bufpos+=len;
+    return C_OK;
+}
+```
+
+在_addReplyToBuffer函数中，我们把回复cahr *s 的内容写入到客户端的输出缓冲区里，写缓冲区的长度增加了len。
+
+明显，redis把客户端的数据放在了缓冲区里便开始了下一轮循环了，那么该缓冲区的内容应该会在下一轮循环被处理。
+
+我们跟踪c->bufpos，来到一个while循环，这可能就是我们需要关注的地方。
+
+### writeToClient
+
+```c
+int writeToClient(client *c, int handler_installed) {
+    //省略
+    while(clientHasPendingReplies(c)) {
+        if (c->bufpos > 0) {
+            nwritten = connWrite(c->conn,c->buf+c->sentlen,c->bufpos-c->sentlen);
+           //省略
+        } else {
+           //省略
+        }
+        //省略
+    }
+    //省略
+    return C_OK;
+}
+```
+
+毫无疑问connWrite就是把数据写入connection里面socket的方法，connWrite里面的内容都是一些跟socket相关的操作，虽然它也非常重要，但是我们在这里的目的还是了解Redis的原理，我们就先把socket读写操作放一放。我们更关心Redis是如何来到writeToClient函数的。
+
+我们在上面猜测，Redis会在下一次事件循环开始的时候处理上一次事件循环所产生的缓冲区数据。那么我们来看看Redis中重要的事件循环函数
+
+### aeProcessEvents
+
+```c
+int aeProcessEvents(aeEventLoop *eventLoop, int flags)
+{
+    int processed = 0, numevents;
+    /* Nothing to do? return ASAP */
+    if (!(flags & AE_TIME_EVENTS) && !(flags & AE_FILE_EVENTS)) return 0;
+    /* Note that we want call select() even if there are no
+     * file events to process as long as we want to process time
+     * events, in order to sleep until the next time event is ready
+     * to fire. */
+    if (eventLoop->maxfd != -1 ||
+        ((flags & AE_TIME_EVENTS) && !(flags & AE_DONT_WAIT))) {
+        int j;
+        aeTimeEvent *shortest = NULL;
+        struct timeval tv, *tvp;
+        if (flags & AE_TIME_EVENTS && !(flags & AE_DONT_WAIT))
+            shortest = aeSearchNearestTimer(eventLoop);
+        if (shortest) {
+            long now_sec, now_ms;
+            aeGetTime(&now_sec, &now_ms);
+            tvp = &tv;
+            /* How many milliseconds we need to wait for the next
+             * time event to fire? */
+            long long ms =
+                (shortest->when_sec - now_sec)*1000 +
+                shortest->when_ms - now_ms;
+            if (ms > 0) {
+                tvp->tv_sec = ms/1000;
+                tvp->tv_usec = (ms % 1000)*1000;
+            } else {
+                tvp->tv_sec = 0;
+                tvp->tv_usec = 0;
+            }
+        } else {
+            /* If we have to check for events but need to return
+             * ASAP because of AE_DONT_WAIT we need to set the timeout
+             * to zero */
+            if (flags & AE_DONT_WAIT) {
+                tv.tv_sec = tv.tv_usec = 0;
+                tvp = &tv;
+            } else {
+                /* Otherwise we can block */
+                tvp = NULL; /* wait forever */
+            }
+        }
+        if (eventLoop->flags & AE_DONT_WAIT) {
+            tv.tv_sec = tv.tv_usec = 0;
+            tvp = &tv;
+        }
+        if (eventLoop->beforesleep != NULL && flags & AE_CALL_BEFORE_SLEEP)
+            eventLoop->beforesleep(eventLoop);
+        /* Call the multiplexing API, will return only on timeout or when
+         * some event fires. */
+        numevents = aeApiPoll(eventLoop, tvp);
+        /* After sleep callback. */
+        if (eventLoop->aftersleep != NULL && flags & AE_CALL_AFTER_SLEEP)
+            eventLoop->aftersleep(eventLoop);
+        for (j = 0; j < numevents; j++) {
+            aeFileEvent *fe = &eventLoop->events[eventLoop->fired[j].fd];
+            int mask = eventLoop->fired[j].mask;
+            int fd = eventLoop->fired[j].fd;
+            int fired = 0; /* Number of events fired for current fd. */
+            /* Normally we execute the readable event first, and the writable
+             * event later. This is useful as sometimes we may be able
+             * to serve the reply of a query immediately after processing the
+             * query.
+             *
+             * However if AE_BARRIER is set in the mask, our application is
+             * asking us to do the reverse: never fire the writable event
+             * after the readable. In such a case, we invert the calls.
+             * This is useful when, for instance, we want to do things
+             * in the beforeSleep() hook, like fsyncing a file to disk,
+             * before replying to a client. */
+            int invert = fe->mask & AE_BARRIER;
+            /* Note the "fe->mask & mask & ..." code: maybe an already
+             * processed event removed an element that fired and we still
+             * didn't processed, so we check if the event is still valid.
+             *
+             * Fire the readable event if the call sequence is not
+             * inverted. */
+            if (!invert && fe->mask & mask & AE_READABLE) {
+                fe->rfileProc(eventLoop,fd,fe->clientData,mask);
+                fired++;
+                fe = &eventLoop->events[fd]; /* Refresh in case of resize. */
+            }
+            /* Fire the writable event. */
+            if (fe->mask & mask & AE_WRITABLE) {
+                if (!fired || fe->wfileProc != fe->rfileProc) {
+                    fe->wfileProc(eventLoop,fd,fe->clientData,mask);
+                    fired++;
+                }
+            }
+            /* If we have to invert the call, fire the readable event now
+             * after the writable one. */
+            if (invert) {
+                fe = &eventLoop->events[fd]; /* Refresh in case of resize. */
+                if ((fe->mask & mask & AE_READABLE) &&
+                    (!fired || fe->wfileProc != fe->rfileProc))
+                {
+                    fe->rfileProc(eventLoop,fd,fe->clientData,mask);
+                    fired++;
+                }
+            }
+            processed++;
+        }
+    }
+    /* Check time events */
+    if (flags & AE_TIME_EVENTS)
+        processed += processTimeEvents(eventLoop);
+
+    return processed; /* return the number of processed file/time events */
+}
+```
+
+我们猜测清空客户端输出缓冲区数据的代码肯定会发生在numevents = aeApiPoll(eventLoop, tvp)之前，因为要在下一次读取客户端缓冲区之前清空输出缓冲区。那么在上面代码可能做到这一点的只能是eventLoop->beforesleep(eventLoop)。
+
+beforesleep在官方说明有描述 "每次触发事件循环时都会调用，Redis去服务一些请求，然后返回到事件循环中。"
+
+我们事不宜迟，马上打开beforesleep函数
+
+### beforesleep
+
+```c
+void beforeSleep(struct aeEventLoop *eventLoop)
+{
+    UNUSED(eventLoop);
+
+    size_t zmalloc_used = zmalloc_used_memory();
+    if (zmalloc_used > server.stat_peak_memory)
+        server.stat_peak_memory = zmalloc_used;
+
+    /* Just call a subset of vital functions in case we are re-entering
+     * the event loop from processEventsWhileBlocked(). Note that in this
+     * case we keep track of the number of events we are processing, since
+     * processEventsWhileBlocked() wants to stop ASAP if there are no longer
+     * events to handle. */
+    if (ProcessingEventsWhileBlocked)
+    {
+        uint64_t processed = 0;
+        processed += handleClientsWithPendingReadsUsingThreads();
+        processed += tlsProcessPendingData();
+        processed += handleClientsWithPendingWrites();
+        processed += freeClientsInAsyncFreeQueue();
+        server.events_processed_while_blocked += processed;
+        return;
+    }
+
+    /* Handle precise timeouts of blocked clients. 处理被阻塞客户端的精确超时*/
+    handleBlockedClientsTimeout();
+
+    /* We should handle pending reads clients ASAP after event loop. 处理挂起的读取客户端*/
+    handleClientsWithPendingReadsUsingThreads();
+
+    /* Handle TLS pending data. 处理 TLS 待处理数据 (must be done before flushAppendOnlyFile) */
+    tlsProcessPendingData();
+
+    /* If tls still has pending unread data don't sleep at all. */
+    aeSetDontWait(server.el, tlsHasPendingData());
+
+    /* Call the Redis Cluster before sleep function. Note that this function
+     * may change the state of Redis Cluster (from ok to fail or vice versa),
+     * so it's a good idea to call it before serving the unblocked clients
+     * later in this function.
+     * 在 sleep 函数之前调用 Redis Cluster。
+     * 请注意，此函数可能会更改 Redis 集群的状态（从 ok 变为失败，反之亦然），
+     * 因此在此函数稍后为未阻塞的客户端提供服务之前调用它是个好主意 */
+    if (server.cluster_enabled)
+        clusterBeforeSleep();
+
+    /* Run a fast expire cycle (the called function will return
+     * ASAP if a fast cycle is not needed). 
+     运行快速过期循环（如果不需要快速循环，被调用函数将尽快返回）*/
+    if (server.active_expire_enabled && server.masterhost == NULL)
+        activeExpireCycle(ACTIVE_EXPIRE_CYCLE_FAST);
+
+    /* Unblock all the clients blocked for synchronous replication
+     * in WAIT. 在 WAIT 中解除对同步复制阻塞的所有客户端 */
+    if (listLength(server.clients_waiting_acks))
+        processClientsWaitingReplicas();
+
+    /* Check if there are clients unblocked by modules that implement
+     * blocking commands. 检查是否有客户端被实现阻塞命令的模块解除阻塞*/
+    if (moduleCount())
+        moduleHandleBlockedClients();
+
+    /* Try to process pending commands for clients that were just unblocked. 尝试为刚刚解锁的客户端处理挂起的命令。*/
+    if (listLength(server.unblocked_clients))
+        processUnblockedClients();
+
+    /* Send all the slaves an ACK request if at least one client blocked
+     * during the previous event loop iteration. Note that we do this after
+     * processUnblockedClients(), so if there are multiple pipelined WAITs
+     * and the just unblocked WAIT gets blocked again, we don't have to wait
+     * a server cron cycle in absence of other event loop events. See #6623. */
+    if (server.get_ack_from_slaves)
+    {
+        robj *argv[3];
+
+        argv[0] = createStringObject("REPLCONF", 8);
+        argv[1] = createStringObject("GETACK", 6);
+        argv[2] = createStringObject("*", 1); /* Not used argument. */
+        replicationFeedSlaves(server.slaves, server.slaveseldb, argv, 3);
+        decrRefCount(argv[0]);
+        decrRefCount(argv[1]);
+        decrRefCount(argv[2]);
+        server.get_ack_from_slaves = 0;
+    }
+
+    /* Send the invalidation messages to clients participating to the
+     * client side caching protocol in broadcasting (BCAST) mode.
+     以广播 (BCAST) 模式将失效消息发送给参与客户端缓存协议的客户端。 */
+    trackingBroadcastInvalidationMessages();
+
+    /* Write the AOF buffer on disk 将 AOF 缓冲区写入磁盘*/
+    flushAppendOnlyFile(0);
+
+    /* Handle writes with pending output buffers. */
+    handleClientsWithPendingWritesUsingThreads();
+
+    /* Close clients that need to be closed asynchronous */
+    freeClientsInAsyncFreeQueue();
+
+    /* Try to process blocked clients every once in while. Example: A module
+     * calls RM_SignalKeyAsReady from within a timer callback (So we don't
+     * visit processCommand() at all).
+     * 尝试每隔一段时间处理一次被阻塞的客户端。
+       示例：模块从计时器回调中调用 RM_SignalKeyAsReady
+      （所以我们根本不访问 processCommand() ）。 */
+    handleClientsBlockedOnKeys();
+
+    /* Before we are going to sleep, let the threads access the dataset by
+     * releasing the GIL. Redis main thread will not touch anything at this
+     * time. */
+    if (moduleCount())
+        moduleReleaseGIL();
+
+    /* Do NOT add anything below moduleReleaseGIL !!! */
+}
+
+```
+
+beforesleep处理的内容很多，但是都相对独立的一些模块
+
+我们很容易就能定位到写方法handleClientsWithPendingWrites和handleClientsWithPendingWritesUsingThreads
+
+但是这里我们只能运行其中的一个方法，这取决于ProcessingEventsWhileBlocked的值是1还是0。
+
+Redis在读取RDB或者AOF文件时会把ProcessingEventsWhileBlocked值设置为1，这时标志Redis处于阻塞状态，
+
+只能支持：
+
+1. 多线程读
+2. 单线程写
+3. 处理 TLS 待处理数据
+4. 异步释放客户端数据
+
+不能支持：
+
+1. 处理被阻塞客户端的精确超时
+2. 运行快速过期循环检查
+3.  在 WAIT 中解除对同步复制阻塞的所有客户端
+4. 检查是否有客户端被实现阻塞命令的模块解除阻塞
+5. 尝试为刚刚解锁的客户端处理挂起的命令
+6. 以广播 (BCAST) 模式将失效消息发送给参与客户端缓存协议的客户端
+7. 将 AOF 缓冲区写入磁盘
+8. 多线程写
+9. 处理一次被阻塞的客户端
+10. 模块释放GIL
+
+redis根据当前阻塞状态在beforesleep函数里对自己的支持内容做了区分，不管怎样，我们都可以找到写入支持。
+
+### handleClientsWithPendingWrites
+
+```c
+int handleClientsWithPendingWrites(void) {
+    listIter li;
+    listNode *ln;
+    int processed = listLength(server.clients_pending_write);
+
+    listRewind(server.clients_pending_write,&li);
+    while((ln = listNext(&li))) {
+        client *c = listNodeValue(ln);
+        c->flags &= ~CLIENT_PENDING_WRITE;
+        listDelNode(server.clients_pending_write,ln);
+
+        /* If a client is protected, don't do anything,
+         * that may trigger write error or recreate handler. */
+        if (c->flags & CLIENT_PROTECTED) continue;
+
+        /* Don't write to clients that are going to be closed anyway. */
+        if (c->flags & CLIENT_CLOSE_ASAP) continue;
+
+        /* Try to write buffers to the client socket. */
+        if (writeToClient(c,0) == C_ERR) continue;
+
+        /* If after the synchronous writes above we still have data to
+         * output to the client, we need to install the writable handler. */
+        if (clientHasPendingReplies(c)) {
+            int ae_barrier = 0;
+            /* For the fsync=always policy, we want that a given FD is never
+             * served for reading and writing in the same event loop iteration,
+             * so that in the middle of receiving the query, and serving it
+             * to the client, we'll call beforeSleep() that will do the
+             * actual fsync of AOF to disk. the write barrier ensures that. */
+            if (server.aof_state == AOF_ON &&
+                server.aof_fsync == AOF_FSYNC_ALWAYS)
+            {
+                ae_barrier = 1;
+            }
+            if (connSetWriteHandlerWithBarrier(c->conn, sendReplyToClient, ae_barrier) == C_ERR) {
+                freeClientAsync(c);
+            }
+        }
+    }
+    return processed;
+}
+```
+
+毫无疑问，我们在handleClientsWithPendingWrites函数中找到了writeToClient，至此，我们已经完成了闭环。
 
 
 
+## 单线程总结
+
+至此，我们已经完成了以下梳理：
+
+1. 客户端的连接
+2. 客户端数据传输
+3. 服务器按协议内容解析客户端缓冲区数据，并赋值参数
+4. 根据参数找到具体执行命令的函数
+5. 执行命令
+6. 回复客户端数据
+
+细心的朋友已经发现，我们从头到尾都是讨论的是一个流程内的东西，没有涉及到多线程的处理，无论是数据读，命令执行，回复消息都是在一个线程里面处理的，我们会惊讶为什么单线程效率也可以这么高。这也是我们一个老生常谈的内容，redis是基于内存操作的数据库，而内存的速度和CPU的速度有几个数量级之差，可见redis它的瓶颈在于内存的读写和网络，而不是CPU的处理速度。
 
 
 
+## 多线程杀器
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+未完待续
 
 
 

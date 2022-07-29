@@ -2292,13 +2292,13 @@ void beforeSleep(struct aeEventLoop *eventLoop)
         return;
     }
 
-    /* Handle precise timeouts of blocked clients. */
+    /* Handle precise timeouts of blocked clients. 处理被阻塞客户端的精确超时*/
     handleBlockedClientsTimeout();
 
-    /* We should handle pending reads clients ASAP after event loop. */
+    /* We should handle pending reads clients ASAP after event loop. 处理挂起的读取客户端*/
     handleClientsWithPendingReadsUsingThreads();
 
-    /* Handle TLS pending data. (must be done before flushAppendOnlyFile) */
+    /* Handle TLS pending data. 处理 TLS 待处理数据 (must be done before flushAppendOnlyFile) */
     tlsProcessPendingData();
 
     /* If tls still has pending unread data don't sleep at all. */
@@ -2307,26 +2307,30 @@ void beforeSleep(struct aeEventLoop *eventLoop)
     /* Call the Redis Cluster before sleep function. Note that this function
      * may change the state of Redis Cluster (from ok to fail or vice versa),
      * so it's a good idea to call it before serving the unblocked clients
-     * later in this function. */
+     * later in this function.
+     * 在 sleep 函数之前调用 Redis Cluster。
+     * 请注意，此函数可能会更改 Redis 集群的状态（从 ok 变为失败，反之亦然），
+     * 因此在此函数稍后为未阻塞的客户端提供服务之前调用它是个好主意 */
     if (server.cluster_enabled)
         clusterBeforeSleep();
 
     /* Run a fast expire cycle (the called function will return
-     * ASAP if a fast cycle is not needed). */
+     * ASAP if a fast cycle is not needed). 
+     运行快速过期循环（如果不需要快速循环，被调用函数将尽快返回）*/
     if (server.active_expire_enabled && server.masterhost == NULL)
         activeExpireCycle(ACTIVE_EXPIRE_CYCLE_FAST);
 
     /* Unblock all the clients blocked for synchronous replication
-     * in WAIT. */
+     * in WAIT. 在 WAIT 中解除对同步复制阻塞的所有客户端 */
     if (listLength(server.clients_waiting_acks))
         processClientsWaitingReplicas();
 
     /* Check if there are clients unblocked by modules that implement
-     * blocking commands. */
+     * blocking commands. 检查是否有客户端被实现阻塞命令的模块解除阻塞*/
     if (moduleCount())
         moduleHandleBlockedClients();
 
-    /* Try to process pending commands for clients that were just unblocked. */
+    /* Try to process pending commands for clients that were just unblocked. 尝试为刚刚解锁的客户端处理挂起的命令。*/
     if (listLength(server.unblocked_clients))
         processUnblockedClients();
 
@@ -2350,10 +2354,11 @@ void beforeSleep(struct aeEventLoop *eventLoop)
     }
 
     /* Send the invalidation messages to clients participating to the
-     * client side caching protocol in broadcasting (BCAST) mode. */
+     * client side caching protocol in broadcasting (BCAST) mode.
+     以广播 (BCAST) 模式将失效消息发送给参与客户端缓存协议的客户端。 */
     trackingBroadcastInvalidationMessages();
 
-    /* Write the AOF buffer on disk */
+    /* Write the AOF buffer on disk 将 AOF 缓冲区写入磁盘*/
     flushAppendOnlyFile(0);
 
     /* Handle writes with pending output buffers. */
@@ -2364,7 +2369,10 @@ void beforeSleep(struct aeEventLoop *eventLoop)
 
     /* Try to process blocked clients every once in while. Example: A module
      * calls RM_SignalKeyAsReady from within a timer callback (So we don't
-     * visit processCommand() at all). */
+     * visit processCommand() at all).
+     * 尝试每隔一段时间处理一次被阻塞的客户端。
+       示例：模块从计时器回调中调用 RM_SignalKeyAsReady
+      （所以我们根本不访问 processCommand() ）。 */
     handleClientsBlockedOnKeys();
 
     /* Before we are going to sleep, let the threads access the dataset by

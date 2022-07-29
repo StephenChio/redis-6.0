@@ -1925,7 +1925,13 @@ int processMultibulkBuffer(client *c) {
  *
  * 1. The client is reset unless there are reasons to avoid doing it.
  * 2. In the case of master clients, the replication offset is updated.
- * 3. Propagate commands we got from our master to replicas down the line. */
+ * 3. Propagate commands we got from our master to replicas down the line. 
+ * 
+ * 1.客户端会被重置，除非有什么原因阻止我们这样做。
+ * 2.如果是在主节点下，可复制偏移量会被更新
+ * 3.将我们从主节点获得的命令传播到从节点。
+ * 
+ * */
 void commandProcessed(client *c) {
     long long prev_offset = c->reploff;
     if (c->flags & CLIENT_MASTER && !(c->flags & CLIENT_MULTI)) {
@@ -3241,7 +3247,6 @@ void *IOThreadMain(void *myid) {
             if (io_threads_op == IO_THREADS_OP_WRITE) {
                 writeToClient(c,0);
             } else if (io_threads_op == IO_THREADS_OP_READ) {
-                printf("3119\n");
                 readQueryFromClient(c->conn);
             } else {
                 serverPanic("io_threads_op value is unknown");
@@ -3492,7 +3497,6 @@ int handleClientsWithPendingReadsUsingThreads(void) {
     listRewind(io_threads_list[0],&li);
     while((ln = listNext(&li))) {
         client *c = listNodeValue(ln);
-        printf("3371\n");
         readQueryFromClient(c->conn);
     }
     listEmpty(io_threads_list[0]);
