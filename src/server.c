@@ -2756,7 +2756,7 @@ static void readOOMScoreAdj(void)
  * 此函数将根据用户指定的配置配置当前进程的oom_score_adj。这目前仅在Linux上实现。（取值-1000-1000）-1000代表永远不会被kill
  * A process_class value of -1 implies OOM_CONFIG_MASTER or OOM_CONFIG_REPLICA,
  * depending on current role.
- * 
+ *
  * process_class值为-1表示OOM_CONFIG_MASTER或OOM_CONFIG_REPLICA，具体取决于当前角色。
  */
 int setOOMScoreAdj(int process_class)
@@ -2915,7 +2915,7 @@ void adjustOpenFilesLimit(void)
 }
 
 /* Check that server.tcp_backlog can be actually enforced in Linux according
- * to the value of /proc/sys/net/core/somaxconn, or warn about it. 
+ * to the value of /proc/sys/net/core/somaxconn, or warn about it.
  根据 /proc/sys/net/core/somaxconn 的值，检查 server.tcp_backlog 是否可以在 Linux 中实际执行，或者警告它。*/
 void checkTcpBacklogSettings(void)
 {
@@ -2949,7 +2949,7 @@ void checkTcpBacklogSettings(void)
  *
  * 要绑定的地址在全局 server.bindaddr 数组中指定，它们的数量是 server.bindaddr_count。
  * 如果服务器配置不包含要绑定的特定地址，此函数将尝试为 IPv4 和 IPv6 协议绑定 *（所有地址）。
- * 
+ *
  * On success the function returns C_OK.
  * 成功时，函数返回 C_OK。
  *
@@ -2957,7 +2957,7 @@ void checkTcpBacklogSettings(void)
  * error, at least one of the server.bindaddr addresses was
  * impossible to bind, or no bind addresses were specified in the server
  * configuration but the function is not able to bind * for at least
- * one of the IPv4 or IPv6 protocols. 
+ * one of the IPv4 or IPv6 protocols.
  * 出错时，函数返回 C_ERR。
  * 要使函数出错，至少有一个 server.bindaddr 地址无法绑定，
  * 或者在服务器配置中未指定绑定地址，但函数无法绑定 * IPv4 或 IPv6 协议中的至少一个。*/
@@ -2981,7 +2981,7 @@ int listenToPort(int port, int *fds, int *count)
              为 IPv6 和 IPv4 绑定 *，仅当 server.bindaddr_count == 0 时才会进入这里*/
             fds[*count] = anetTcp6Server(server.neterr, port, NULL,
                                          server.tcp_backlog);
-            printf("bind Tcp6 * fd:%d\n",fds[*count]);                          
+            printf("bind Tcp6 * fd:%d\n", fds[*count]);
             if (fds[*count] != ANET_ERR)
             {
                 anetNonBlock(NULL, fds[*count]);
@@ -2998,7 +2998,7 @@ int listenToPort(int port, int *fds, int *count)
                 /* Bind the IPv4 address as well. */
                 fds[*count] = anetTcpServer(server.neterr, port, NULL,
                                             server.tcp_backlog);
-                printf("bind Tcp4 * fd:%d\n",fds[*count]);      
+                printf("bind Tcp4 * fd:%d\n", fds[*count]);
                 if (fds[*count] != ANET_ERR)
                 {
                     anetNonBlock(NULL, fds[*count]);
@@ -3303,7 +3303,7 @@ void initServer(void)
      */
     for (j = 0; j < server.ipfd_count; j++)
     {
-        printf("aeCreateFileEvent:ipfd:%d\n",server.ipfd[j]);
+        printf("aeCreateFileEvent:ipfd:%d\n", server.ipfd[j]);
         if (aeCreateFileEvent(server.el, server.ipfd[j], AE_READABLE, acceptTcpHandler, NULL) == AE_ERR)
         {
             serverPanic(
@@ -3704,34 +3704,54 @@ void preventCommandReplication(client *c)
 
 /* Call() is the core of Redis execution of a command.
  *
+ * Call函数是Redis执行命令的核心
+ *
  * The following flags can be passed:
- * CMD_CALL_NONE        No flags.
- * CMD_CALL_SLOWLOG     Check command speed and log in the slow log if needed.
- * CMD_CALL_STATS       Populate command stats.
+ * 下面的标识都可以备传入
+ * CMD_CALL_NONE        No flags. 无标识
+ * CMD_CALL_SLOWLOG     Check command speed and log in the slow log if needed. 如果需要，检查命令执行时间和记录慢日志
+ * CMD_CALL_STATS       Populate command stats. 填充命令统计信息
  * CMD_CALL_PROPAGATE_AOF   Append command to AOF if it modified the dataset
  *                          or if the client flags are forcing propagation.
+ * 如果 AOF 修改了数据集或客户端标志强制传播，则将命令附加到 AOF。
+ *
  * CMD_CALL_PROPAGATE_REPL  Send command to slaves if it modified the dataset
  *                          or if the client flags are forcing propagation.
- * CMD_CALL_PROPAGATE   Alias for PROPAGATE_AOF|PROPAGATE_REPL.
- * CMD_CALL_FULL        Alias for SLOWLOG|STATS|PROPAGATE.
+ * 如果它修改了数据集或者客户端标志强制传播，则向从节点发送命令。
+ *
+ * CMD_CALL_PROPAGATE   Alias for PROPAGATE_AOF|PROPAGATE_REPL.# PROPAGATE_AOF|PROPAGATE_REPL 的别名。
+ * CMD_CALL_FULL        Alias for SLOWLOG|STATS|PROPAGATE. # SLOWLOG|STATS|PROPAGATE的别名
  *
  * The exact propagation behavior depends on the client flags.
  * Specifically:
+ * 额外的传播行为依赖于客户端标志，例如：
  *
  * 1. If the client flags CLIENT_FORCE_AOF or CLIENT_FORCE_REPL are set
  *    and assuming the corresponding CMD_CALL_PROPAGATE_AOF/REPL is set
  *    in the call flags, then the command is propagated even if the
  *    dataset was not affected by the command.
+ *
+ * 1. 如果设置了客户端标志 CLIENT_FORCE_AOF 或 CLIENT_FORCE_REPL
+ * 并假设在调用标志中设置了相应的 CMD_CALL_PROPAGATE_AOF/REPL，
+ * 那么即使数据集不受命令影响，也会传播命令。
+ *
  * 2. If the client flags CLIENT_PREVENT_REPL_PROP or CLIENT_PREVENT_AOF_PROP
  *    are set, the propagation into AOF or to slaves is not performed even
  *    if the command modified the dataset.
+ *2. 如果设置了客户端标志 CLIENT_PREVENT_REPL_PROP 或 CLIENT_PREVENT_AOF_PROP，
+ * 即使命令修改了数据集，也不会执行到 AOF 或从节点的传播。
  *
  * Note that regardless of the client flags, if CMD_CALL_PROPAGATE_AOF
  * or CMD_CALL_PROPAGATE_REPL are not set, then respectively AOF or
  * slaves propagation will never occur.
  *
+ * 请注意，无论客户端标志如何，如果 CMD_CALL_PROPAGATE_AOF
+ * 或 CMD_CALL_PROPAGATE_REPL 未设置，则分别不会发生 AOF  或从节点传播。
+ *
  * Client flags are modified by the implementation of a given command
  * using the following API:
+ *
+ * 客户端的标识可以通过下面给到的api实现进行修改
  *
  * forceCommandPropagation(client *c, int flags);
  * preventCommandPropagation(client *c);
@@ -3747,31 +3767,38 @@ void call(client *c, int flags)
     struct redisCommand *real_cmd = c->cmd;
 
     /* Send the command to clients in MONITOR mode if applicable.
-     * Administrative commands are considered too dangerous to be shown. */
-    if (listLength(server.monitors) &&
-        !server.loading &&
-        !(c->cmd->flags & (CMD_SKIP_MONITOR | CMD_ADMIN)))
+     * Administrative commands are considered too dangerous to be shown.
+     * 如果适用，以 MONITOR 模式将命令发送给客户端。管理命令被认为太危险而无法显示。
+     * */
+    if (listLength(server.monitors) && !server.loading && !(c->cmd->flags & (CMD_SKIP_MONITOR | CMD_ADMIN)))
     {
         replicationFeedMonitors(c, server.monitors, c->db->id, c->argv, c->argc);
     }
 
     /* Initialization: clear the flags that must be set by the command on
-     * demand, and initialize the array for additional commands propagation. */
+     * demand, and initialize the array for additional commands propagation. 
+     * 初始化：清除必须由命令按需设置的标志，并初始化数组以进行其他命令传播。
+     */
     c->flags &= ~(CLIENT_FORCE_AOF | CLIENT_FORCE_REPL | CLIENT_PREVENT_PROP);
+    // 额外的命令传播
     redisOpArray prev_also_propagate = server.also_propagate;
+    // 初始化额外的命令传播
     redisOpArrayInit(&server.also_propagate);
 
-    /* Call the command. */
+    /* Call the command. 执行命令*/
+    //获取上次保存前所有数据变动的长度
     dirty = server.dirty;
 
     /* Update cache time, in case we have nested calls we want to
-     * update only on the first call*/
+     * update only on the first call
+     更新缓存时间，如果我们有嵌套调用，我们只想在第一次调用时更新 */
     if (server.fixed_time_expire++ == 0)
     {
         updateCachedTime(0);
     }
 
     start = server.ustime;
+    //执行命令
     c->cmd->proc(c);
     duration = ustime() - start;
     dirty = server.dirty - dirty;
@@ -3976,13 +4003,13 @@ void rejectCommandFormat(client *c, const char *fmt, ...)
  * processCommand() execute the command or prepare the
  * server for a bulk read from the client.
  * 如果调用此函数，表明我们已经读取了整个命令，
- * 参数位于客户端 argv/argc 字段中。 
+ * 参数位于客户端 argv/argc 字段中。
  * processCommand() 执行命令或准备从客户端进行批量读取。
- * 
+ *
  * If C_OK is returned the client is still alive and valid and
  * other operations can be performed by the caller. Otherwise
- * if C_ERR is returned the client was destroyed (i.e. after QUIT). 
- * 如果返回 C_OK，则客户端仍然活着且有效，调用者可以执行其他操作。 
+ * if C_ERR is returned the client was destroyed (i.e. after QUIT).
+ * 如果返回 C_OK，则客户端仍然活着且有效，调用者可以执行其他操作。
  * 否则，如果返回 C_ERR，则客户端被销毁（即在 QUIT 之后）。*/
 int processCommand(client *c)
 {
@@ -3991,7 +4018,7 @@ int processCommand(client *c)
     /* The QUIT command is handled separately. Normal command procs will
      * go through checking for replication and QUIT will cause trouble
      * when FORCE_REPLICATION is enabled and would be implemented in
-     * a regular command proc. 
+     * a regular command proc.
      * QUIT 命令单独处理。 正常的命令过程将检查复制，
      * 当启用 FORCE_REPLICATION 时 QUIT 将导致问题，并将在常规命令过程中实现。*/
     if (!strcasecmp(c->argv[0]->ptr, "quit"))
@@ -4038,7 +4065,7 @@ int processCommand(client *c)
     if (authRequired(c))
     {
         /* AUTH and HELLO and no auth commands are valid even in
-         * non-authenticated state. 
+         * non-authenticated state.
          AUTH 和 HELLO 以及 no auth 命令即使在非身份验证状态下也是有效的。 */
         if (!(c->cmd->flags & CMD_NO_AUTH))
         {
@@ -4072,7 +4099,7 @@ int processCommand(client *c)
      * 如果启用了集群，请在此处执行集群重定向。 但是在以下情况，如果我们不执行重定向
      *
      * 1) The sender of this command is our master.
-     * 2) The command has no key arguments. 
+     * 2) The command has no key arguments.
      * 1) 命令的发送人是主节点
      * 2) 该命令没有关键参数。
      * */
@@ -4105,16 +4132,20 @@ int processCommand(client *c)
 
     /* Handle the maxmemory directive.
      * 处理 maxmemory 指令。
-     
+
      * Note that we do not want to reclaim memory if we are here re-entering
      * the event loop since there is a busy Lua script running in timeout
      * condition, to avoid mixing the propagation of scripts with the
-     * propagation of DELs due to eviction. */
+     * propagation of DELs due to eviction.
+     * 注意：我们不想回收内存如果我们是在Lua脚本繁忙超时之后重新进入事件循环，
+     * 这避免由于驱逐而将脚本的传播与 DEL 的传播混为一谈。*/
     if (server.maxmemory && !server.lua_timedout)
     {
         int out_of_memory = freeMemoryIfNeededAndSafe() == C_ERR;
         /* freeMemoryIfNeeded may flush slave output buffers. This may result
-         * into a slave, that may be the active client, to be freed. */
+         * into a slave, that may be the active client, to be freed.
+         freeMemoryIfNeeded函数会刷新从节点输出缓冲区，这可能导致活跃的客户端被释放
+          */
         if (server.current_client == NULL)
             return C_ERR;
 
@@ -4123,7 +4154,10 @@ int processCommand(client *c)
          * amount of memory, so we want to stop that.
          * However, we never want to reject DISCARD, or even EXEC (unless it
          * contains denied commands, in which case is_denyoom_command is already
-         * set. */
+         * set.
+         * 如果客户端在MULTI/EXEC上下文中，排队可能会消耗无限量的内存，所以我们想阻止它。
+         * 但是，我们永远不想拒绝 DISCARD，甚至 EXEC（除非它包含被拒绝的命令，在这种情况下 is_denyoom_command 已经设置。）
+         * */
         if (c->flags & CLIENT_MULTI &&
             c->cmd->proc != execCommand &&
             c->cmd->proc != discardCommand)
@@ -4133,13 +4167,16 @@ int processCommand(client *c)
 
         if (out_of_memory && reject_cmd_on_oom)
         {
+            //如果内存已经满了，并且命令类型不是execCommand和discardCommand
             rejectCommand(c, shared.oomerr);
             return C_OK;
         }
 
         /* Save out_of_memory result at script start, otherwise if we check OOM
          * until first write within script, memory used by lua stack and
-         * arguments might interfere. */
+         * arguments might interfere.
+         * 在脚本的开始保存 内存溢出 结果，否则，如果我们在第一次写入脚本之前检查 OOM，lua 堆栈和参数使用的内存可能会干扰
+         * */
         if (c->cmd->proc == evalCommand || c->cmd->proc == evalShaCommand)
         {
             server.lua_oom = out_of_memory;
@@ -4147,15 +4184,16 @@ int processCommand(client *c)
     }
 
     /* Make sure to use a reasonable amount of memory for client side
-     * caching metadata. */
+     * caching metadata. 确保为客户端缓存数据使用合理大小的内存 */
     if (server.tracking_clients)
         trackingLimitUsedSlots();
 
     /* Don't accept write commands if there are problems persisting on disk
-     * and if this is a master instance. */
+     * and if this is a master instance.
+     当磁盘出现问题和本节点是主节点时，不接收写入命令
+     */
     int deny_write_type = writeCommandsDeniedByDiskError();
-    if (deny_write_type != DISK_ERROR_TYPE_NONE &&
-        server.masterhost == NULL &&
+    if (deny_write_type != DISK_ERROR_TYPE_NONE && server.masterhost == NULL &&
         (is_write_command || c->cmd->proc == pingCommand))
     {
         if (deny_write_type == DISK_ERROR_TYPE_RDB)
@@ -4168,11 +4206,10 @@ int processCommand(client *c)
     }
 
     /* Don't accept write commands if there are not enough good slaves and
-     * user configured the min-slaves-to-write option. */
-    if (server.masterhost == NULL &&
-        server.repl_min_slaves_to_write &&
-        server.repl_min_slaves_max_lag &&
-        is_write_command &&
+     * user configured the min-slaves-to-write option.
+     当我们没有足够的从节点符合我们配置的最小写入从节点选项时，不接收写入命令
+     */
+    if (server.masterhost == NULL && server.repl_min_slaves_to_write && server.repl_min_slaves_max_lag && is_write_command &&
         server.repl_good_slaves_count < server.repl_min_slaves_to_write)
     {
         rejectCommand(c, shared.noreplicaserr);
@@ -4180,17 +4217,19 @@ int processCommand(client *c)
     }
 
     /* Don't accept write commands if this is a read only slave. But
-     * accept write commands if this is our master. */
-    if (server.masterhost && server.repl_slave_ro &&
-        !(c->flags & CLIENT_MASTER) &&
-        is_write_command)
+     * accept write commands if this is our master.
+     * 如果这是一个只读从节点，不接收写命令，但是如果是主节点，则没问题。
+     */
+    if (server.masterhost && server.repl_slave_ro && !(c->flags & CLIENT_MASTER) && is_write_command)
     {
         rejectCommand(c, shared.roslaveerr);
         return C_OK;
     }
 
     /* Only allow a subset of commands in the context of Pub/Sub if the
-     * connection is in RESP2 mode. With RESP3 there are no limits. */
+     * connection is in RESP2 mode. With RESP3 there are no limits.
+     * 如果连接处于 RESP2 模式，则仅允许 Pub/Sub 上下文中的命令子集。 RESP3 没有限制。
+     */
     if ((c->flags & CLIENT_PUBSUB && c->resp == 2) &&
         c->cmd->proc != pingCommand &&
         c->cmd->proc != subscribeCommand &&
@@ -4207,17 +4246,18 @@ int processCommand(client *c)
 
     /* Only allow commands with flag "t", such as INFO, SLAVEOF and so on,
      * when slave-serve-stale-data is no and we are a slave with a broken
-     * link with master. */
-    if (server.masterhost && server.repl_state != REPL_STATE_CONNECTED &&
-        server.repl_serve_stale_data == 0 &&
-        is_denystale_command)
+     * link with master.
+     * 仅当 slave-serve-stale-data 为 no 且我们是与 master 的链接断开的 slave 时，才允许带有标志“t”的命令，例如 INFO、SLAVEOF 等。
+     * */
+    if (server.masterhost && server.repl_state != REPL_STATE_CONNECTED && server.repl_serve_stale_data == 0 && is_denystale_command)
     {
         rejectCommand(c, shared.masterdownerr);
         return C_OK;
     }
 
     /* Loading DB? Return an error if the command has not the
-     * CMD_LOADING flag. */
+     * CMD_LOADING flag.
+     如果命令不带有CMD_LOADING标志，而我们处于loading DB状态，返回错误*/
     if (server.loading && is_denyloading_command)
     {
         rejectCommand(c, shared.loadingerr);
@@ -4229,7 +4269,12 @@ int processCommand(client *c)
      * sending a transaction with pipelining without error checking, may have
      * the MULTI plus a few initial commands refused, then the timeout
      * condition resolves, and the bottom-half of the transaction gets
-     * executed, see Github PR #7022. */
+     * executed, see Github PR #7022.
+     *
+     * Lua脚本是否太慢，只允许限制数量的命令。
+     * 注意：我们需要去允许事务命令，或者客户端发送一个带有流水线无错误检查的事务。
+     * 可能有 MULTI 加上一些初始命令被拒绝，然后超时条件解决，事务的下半部分被执行，请参阅 Github PR #7022。
+     * */
     if (server.lua_timedout &&
         c->cmd->proc != authCommand &&
         c->cmd->proc != helloCommand &&
@@ -4249,16 +4294,16 @@ int processCommand(client *c)
         return C_OK;
     }
 
-    /* Exec the command */
-    if (c->flags & CLIENT_MULTI &&
-        c->cmd->proc != execCommand && c->cmd->proc != discardCommand &&
-        c->cmd->proc != multiCommand && c->cmd->proc != watchCommand)
+    /* Exec the command 执行命令*/
+    if (c->flags & CLIENT_MULTI && c->cmd->proc != execCommand && c->cmd->proc != discardCommand && c->cmd->proc != multiCommand && c->cmd->proc != watchCommand)
     {
+        //此客户端处于 MULTI 事务上下文中，我们入队命令，让命令原子执行
         queueMultiCommand(c);
         addReply(c, shared.queued);
     }
     else
     {
+        //执行单个命令
         call(c, CMD_CALL_FULL);
         c->woff = server.master_repl_offset;
         if (listLength(server.ready_keys))
@@ -5376,7 +5421,7 @@ void linuxMemoryWarnings(void)
      * 0：表示内核将检查是否有足够的可用内存供应用进程使用；如果有足够的可用内存，内存申请允许；否则，内存申请失败，并把错误返回给应用进程。
      * 1：表示内核允许分配所有的物理内存，而不管当前的内存状态如何。
      * 2：表示内核允许分配超过所有物理内存和交换空间总和的内存。
-     * 
+     *
      */
     if (linuxOvercommitMemoryValue() == 0)
     {
@@ -5430,7 +5475,7 @@ static int smapsGetSharedDirty(unsigned long addr)
  * The bug was fixed in commit ff1712f953e27f0b0718762ec17d0adb15c9fd0b
  * titled: "arm64: pgtable: Ensure dirty bit is preserved across pte_wrprotect()"
  * Return -1 on unexpected test failure, 1 if the kernel seems to be affected,
- * and 0 otherwise. 
+ * and 0 otherwise.
  * 旧的arm64 Linux内核有一个bug，在某些情况下，在后台保存期间可能会导致数据损坏。
  * 此函数检查内核是否受到影响。测试失败时返回-1，如果内核似乎受到影响，则返回1，否则返回0*/
 int linuxMadvFreeForkBugCheck(void)
@@ -6225,12 +6270,12 @@ int main(int argc, char **argv)
      * 每一个处于监听(Listen)状态的端口,都有自己的监听队列.监听队列的长度,与如下两方面有关:
      * - somaxconn参数.
      * - 使用该端口的程序中listen()函数.
-     * 
+     *
      * 关于somaxconn参数:
      * 定义了系统中每一个端口最大的监听队列的长度,这是个全局的参数,默认值为128.
      * 限制了每个端口接收新tcp连接侦听队列的大小。
      * 对于一个经常处理新连接的高负载 web服务环境来说，默认的 128 太小了。
-     * 大多数环境这个值建议增加到 1024 或者更多。 
+     * 大多数环境这个值建议增加到 1024 或者更多。
      * 服务进程会自己限制侦听队列的大小(例如 sendmail(8) 或者 Apache)，
      * 常常在它们的配置文件中有设置队列大小的选项。大的侦听队列对防止拒绝服务 DoS 攻击也会有所帮助。
      */
@@ -6243,12 +6288,12 @@ int main(int argc, char **argv)
         serverLog(LL_WARNING, "Server initialized");
 #ifdef __linux__
         /**
-         * 
+         *
          * 判断 vm.overcommit_memory 是否为1或者2，如果为0 打印警告日志
          * 0：表示内核将检查是否有足够的可用内存供应用进程使用；如果有足够的可用内存，内存申请允许；否则，内存申请失败，并把错误返回给应用进程。
          * 1：表示内核允许分配所有的物理内存，而不管当前的内存状态如何。
          * 2：表示内核允许分配超过所有物理内存和交换空间总和的内存。
-         * 
+         *
          */
         linuxMemoryWarnings();
 #if defined(__arm64__)
@@ -6256,7 +6301,7 @@ int main(int argc, char **argv)
         /**
          * 旧的arm64 Linux内核有一个bug，在某些情况下，在后台保存期间可能会导致数据损坏。
          * 此函数检查内核是否受到影响。测试失败时返回-1，如果内核似乎受到影响，则返回1，否则返回
-         * 
+         *
          */
         if ((ret = linuxMadvFreeForkBugCheck()))
         {
@@ -6311,7 +6356,7 @@ int main(int argc, char **argv)
         }
     }
     else
-    { 
+    {
         InitServerLast();
         sentinelIsRunning();
         if (server.supervised_mode == SUPERVISED_SYSTEMD)
@@ -6329,7 +6374,7 @@ int main(int argc, char **argv)
 
     redisSetCpuAffinity(server.server_cpulist);
     //此函数将根据用户指定的配置配置当前进程的oom_score_adj。这目前仅在Linux上实现。（取值-1000-1000）-1000代表永远不会被kill
-    //process_class值为-1表示OOM_CONFIG_MASTER或OOM_CONFIG_REPLICA，具体取决于当前角色。
+    // process_class值为-1表示OOM_CONFIG_MASTER或OOM_CONFIG_REPLICA，具体取决于当前角色。
     setOOMScoreAdj(-1);
 
     //开启主事件循环，处理数据

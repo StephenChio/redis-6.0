@@ -238,22 +238,34 @@ void dbOverwrite(redisDb *db, robj *key, robj *val) {
 
 /* High level Set operation. This function can be used in order to set
  * a key, whatever it was existing or not, to a new object.
- *
+ * 高等级set操作，此函数可用于将键设置为新对象，无论它是否存在。
  * 1) The ref count of the value object is incremented.
  * 2) clients WATCHing for the destination key notified.
  * 3) The expire time of the key is reset (the key is made persistent),
  *    unless 'keepttl' is true.
- *
+*  1) value值的引用计数增加
+ * 2) 客户端正在监视通知的目标key
+ * 3) key的过期时间已经被重置（key更持久了），除非keepttl是true
+ * 
  * All the new keys in the database should be created via this interface.
  * The client 'c' argument may be set to NULL if the operation is performed
- * in a context where there is no clear client performing the operation. */
+ * in a context where there is no clear client performing the operation. 
+ * 
+ * 所有数据库中的新key都应该通过此接口创建。
+ * 如果在没有明确的客户端执行操作的上下文中执行操作，则客户端“c”参数可以设置为 NULL。
+ * 
+ * */
 void genericSetKey(client *c, redisDb *db, robj *key, robj *val, int keepttl, int signal) {
     if (lookupKeyWrite(db,key) == NULL) {
+        //如果找不到key
         dbAdd(db,key,val);
     } else {
+        //如果key已经存在，重写
         dbOverwrite(db,key,val);
     }
+    //value 引用增加
     incrRefCount(val);
+    //移除过期时间，后面会重新设置
     if (!keepttl) removeExpire(db,key);
     if (signal) signalModifiedKey(c,db,key);
 }
@@ -554,7 +566,8 @@ long long dbTotalServerKeyCount() {
  *----------------------------------------------------------------------------*/
 
 /* Note that the 'c' argument may be NULL if the key was modified out of
- * a context of a client. */
+ * a context of a client. 
+ 请注意，如果密钥是在客户端上下文之外修改的，则“c”参数可能为 NULL。*/
 void signalModifiedKey(client *c, redisDb *db, robj *key) {
     touchWatchedKey(db,key);
     trackingInvalidateKey(c,key);
@@ -1284,7 +1297,10 @@ int removeExpire(redisDb *db, robj *key) {
 /* Set an expire to the specified key. If the expire is set in the context
  * of an user calling a command 'c' is the client, otherwise 'c' is set
  * to NULL. The 'when' parameter is the absolute unix time in milliseconds
- * after which the key will no longer be considered valid. */
+ * after which the key will no longer be considered valid. 
+ * 为特定的key设置过期时间。如果是客户端调用的，那么c是客户端，否则c可能为空。
+ * 'when' 参数是以毫秒为单位的绝对 unix 时间，在此之后密钥将不再被视为有效。
+ * */
 void setExpire(client *c, redisDb *db, robj *key, long long when) {
     dictEntry *kde, *de;
 
@@ -1296,6 +1312,7 @@ void setExpire(client *c, redisDb *db, robj *key, long long when) {
 
     int writable_slave = server.masterhost && server.repl_slave_ro == 0;
     if (c && writable_slave && !(c->flags & CLIENT_MASTER))
+        //在从节点上也写入该过期时间
         rememberSlaveKeyWithExpire(db,key);
 }
 

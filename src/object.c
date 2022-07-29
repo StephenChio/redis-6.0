@@ -435,7 +435,8 @@ void trimStringObjectIfNeeded(robj *o) {
     }
 }
 
-/* Try to encode a string object in order to save space */
+/* Try to encode a string object in order to save space 
+尝试去编码字符串对象来节省空间*/
 robj *tryObjectEncoding(robj *o) {
     long value;
     sds s = o->ptr;

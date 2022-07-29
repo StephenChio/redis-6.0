@@ -1558,7 +1558,7 @@ This file defines all the I/O functions with clients, masters and replicas
 * `createClient()` allocates and initializes a new client.
 * `createClient()` 为新客户端分配内存
 * the `addReply*()` family of functions are used by command implementations in order to append data to the client structure, that will be transmitted to the client as a reply for a given command executed.
-* `addReply*()` 这一类函数用于实现命令去添加数据到客户端数据结构，这将作为对执行给定命令的回复传输给客户端。
+* `addReply*()` 这一类函数用于实现命令 去添加数据到客户端数据结构，这将作为对执行给定命令的回复传输给客户端。
 * `writeToClient()` transmits the data pending in the output buffers to the client and is called by the *writable event handler* `sendReplyToClient()`.
 * `writeToClient()` 传输在缓冲区中等待发送给客户端的数据被称为 "可写事件处理" `sendReplyToClient()`
 * `readQueryFromClient()` is the *readable event handler* and accumulates data read from the client into the query buffer.

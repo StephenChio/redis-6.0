@@ -1201,7 +1201,7 @@ struct redisServer {
     list *clients_to_close;     /* Clients to close asynchronously 异步去关闭客户端*/
     list *clients_pending_write; /* There is to write or install handler. 需要写入客户端的数据*/
     list *clients_pending_read;  /* Client has pending read socket buffers. 需要读取的客户端数据*/
-    list *slaves, *monitors;    /* List of slaves and MONITORs */
+    list *slaves, *monitors;    /* List of slaves and MONITORs 从节点和哨兵的列表*/
     client *current_client;     /* Current client executing the command. 正在执行命令的客户端*/
     rax *clients_timeout_table; /* Radix tree for blocked clients timeouts. 超时客户端的Radix*/
     long fixed_time_expire;     /* If > 0, expire keys against server.mstime. 如果 > 0，则针对 server.mstime 使keys过期。 */
@@ -1339,7 +1339,7 @@ struct redisServer {
                                       to child process. */
     sds aof_child_diff;             /* AOF diff accumulator child side. */
     /* RDB persistence */
-    long long dirty;                /* Changes to DB from the last save */
+    long long dirty;                /* Changes to DB from the last save 存储上次保存前所有数据变动的长度 */
     long long dirty_before_bgsave;  /* Used to restore dirty on failed BGSAVE */
     pid_t rdb_child_pid;            /* PID of RDB saving child */
     struct saveparam *saveparams;   /* Save points array for RDB */
@@ -1377,7 +1377,7 @@ struct redisServer {
         unsigned long long magic;   /* Magic value to make sure data is valid. */
     } child_info_data;
     /* Propagation of commands in AOF / replication */
-    redisOpArray also_propagate;    /* Additional command to propagate. */
+    redisOpArray also_propagate;    /* Additional command to propagate. 额外的命令传播*/
     /* Logging */
     char *logfile;                  /* Path of log file */
     int syslog_enabled;             /* Is syslog enabled? */
@@ -1401,9 +1401,9 @@ struct redisServer {
                                        gets released. */
     time_t repl_no_slaves_since;    /* We have no slaves since that time.
                                        Only valid if server.slaves len is 0. */
-    int repl_min_slaves_to_write;   /* Min number of slaves to write. */
-    int repl_min_slaves_max_lag;    /* Max lag of <count> slaves to write. */
-    int repl_good_slaves_count;     /* Number of slaves with lag <= max_lag. */
+    int repl_min_slaves_to_write;   /* Min number of slaves to write. 最少写入从节点*/
+    int repl_min_slaves_max_lag;    /* Max lag of <count> slaves to write. 写入最少从节点最大延迟*/
+    int repl_good_slaves_count;     /* Number of slaves with lag <= max_lag. 延迟小于写入最大延迟的从节点数量*/
     int repl_diskless_sync;         /* Master send RDB to slaves sockets directly. */
     int repl_diskless_load;         /* Slave parse RDB directly from the socket.
                                      * see REPL_DISKLESS_LOAD_* enum */
@@ -1411,13 +1411,13 @@ struct redisServer {
     /* Replication (slave) */
     char *masteruser;               /* AUTH with this user and masterauth with master */
     char *masterauth;               /* AUTH with this password with master */
-    char *masterhost;               /* Hostname of master */
+    char *masterhost;               /* Hostname of master 主节点主机名*/
     int masterport;                 /* Port of master */
     int repl_timeout;               /* Timeout after N seconds of master idle */
     client *master;     /* Client that is master for this slave */
     client *cached_master; /* Cached master to be reused for PSYNC. */
     int repl_syncio_timeout; /* Timeout for synchronous I/O calls */
-    int repl_state;          /* Replication status if the instance is a slave */
+    int repl_state;          /* Replication status if the instance is a slave 如果是从节点，这是可复制状态*/
     off_t repl_transfer_size; /* Size of RDB to read from master during sync. */
     off_t repl_transfer_read; /* Amount of RDB read from master during sync. */
     off_t repl_transfer_last_fsync_off; /* Offset when we fsync-ed last time. */
@@ -1425,8 +1425,8 @@ struct redisServer {
     int repl_transfer_fd;    /* Slave -> Master SYNC temp file descriptor */
     char *repl_transfer_tmpfile; /* Slave-> master SYNC temp file name */
     time_t repl_transfer_lastio; /* Unix time of the latest read, for timeout */
-    int repl_serve_stale_data; /* Serve stale data when link is down? */
-    int repl_slave_ro;          /* Slave is read only? */
+    int repl_serve_stale_data; /* Serve stale data when link is down? 链接断开时是否提供旧数据*/
+    int repl_slave_ro;          /* Slave is read only? 是否只读从节点*/
     int repl_slave_ignore_maxmemory;    /* If true slaves do not evict. */
     time_t repl_down_since; /* Unix time at which link with master went down */
     int repl_disable_tcp_nodelay;   /* Disable TCP_NODELAY after SYNC? */
@@ -1463,7 +1463,7 @@ struct redisServer {
     list *unblocked_clients; /* list of clients to unblock before next loop */
     list *ready_keys;        /* List of readyList structures for BLPOP & co */
     /* Client side caching. */
-    unsigned int tracking_clients;  /* # of clients with tracking enabled.*/
+    unsigned int tracking_clients;  /* # of clients with tracking enabled.启用跟踪的客户。*/
     size_t tracking_table_max_keys; /* Max number of keys in tracking table. */
     /* Sort parameters - qsort_r() is only available under BSD so we
      * have to take this state global, in order to pass it to sortCompare() */

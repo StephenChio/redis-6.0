@@ -45,47 +45,59 @@ static int checkStringLength(client *c, long long size) {
 /* The setGenericCommand() function implements the SET operation with different
  * options and variants. This function is called in order to implement the
  * following commands: SET, SETEX, PSETEX, SETNX.
+ * 
+ * setGenericCommand函数实现了对于不同参数的set操作。该函数用来实现以下命令：SET, SETEX, PSETEX, SETNX.
  *
  * 'flags' changes the behavior of the command (NX or XX, see below).
+ * 
+ * 'flags' 会改变命令的行为（NX 或 XX，看下面介绍）
  *
  * 'expire' represents an expire to set in form of a Redis object as passed
  * by the user. It is interpreted according to the specified 'unit'.
+ * 
+ * 'expire' 表示要以用户传递的 Redis 对象的形式设置的过期时间。 它根据指定的'unit'进行解释。
  *
  * 'ok_reply' and 'abort_reply' is what the function will reply to the client
  * if the operation is performed, or when it is not because of NX or
  * XX flags.
+ * 
+ * 'ok_reply' 和 'abort_reply' 是用来回复客户端的函数，如果操作已经执行。或者当不是因为 NX 或 XX 标志时。
  *
  * If ok_reply is NULL "+OK" is used.
  * If abort_reply is NULL, "$-1" is used. */
 
 #define OBJ_SET_NO_FLAGS 0
-#define OBJ_SET_NX (1<<0)          /* Set if key not exists. */
-#define OBJ_SET_XX (1<<1)          /* Set if key exists. */
-#define OBJ_SET_EX (1<<2)          /* Set if time in seconds is given */
-#define OBJ_SET_PX (1<<3)          /* Set if time in ms in given */
-#define OBJ_SET_KEEPTTL (1<<4)     /* Set and keep the ttl */
+#define OBJ_SET_NX (1<<0)          /* Set if key not exists. 如果key不存在则设置*/
+#define OBJ_SET_XX (1<<1)          /* Set if key exists. 只有key存在才设置*/
+#define OBJ_SET_EX (1<<2)          /* Set if time in seconds is given 设置超时秒*/
+#define OBJ_SET_PX (1<<3)          /* Set if time in ms in given 设置超时毫秒*/
+#define OBJ_SET_KEEPTTL (1<<4)     /* Set and keep the ttl 命令以秒为单位返回 key 的剩余过期时间*/
 
 void setGenericCommand(client *c, int flags, robj *key, robj *val, robj *expire, int unit, robj *ok_reply, robj *abort_reply) {
-    long long milliseconds = 0; /* initialized to avoid any harmness warning */
+    long long milliseconds = 0; /* initialized to avoid any harmness warning 初始化以避免任何危害警告*/
 
     if (expire) {
+        //如果有过期时间设置，把过期时间转换成long long 存放到milliseconds，如果我们需要的是秒，则milliseconds*1000
         if (getLongLongFromObjectOrReply(c, expire, &milliseconds, NULL) != C_OK)
             return;
         if (milliseconds <= 0) {
+            //如果过期时间是负数
             addReplyErrorFormat(c,"invalid expire time in %s",c->cmd->name);
             return;
         }
         if (unit == UNIT_SECONDS) milliseconds *= 1000;
     }
 
-    if ((flags & OBJ_SET_NX && lookupKeyWrite(c->db,key) != NULL) ||
-        (flags & OBJ_SET_XX && lookupKeyWrite(c->db,key) == NULL))
+    if ((flags & OBJ_SET_NX && lookupKeyWrite(c->db,key) != NULL) || (flags & OBJ_SET_XX && lookupKeyWrite(c->db,key) == NULL))
     {
+        //不满足NX或XX
         addReply(c, abort_reply ? abort_reply : shared.null[c->resp]);
         return;
     }
     genericSetKey(c,c->db,key,val,flags & OBJ_SET_KEEPTTL,1);
+    //set操作把 存储上次保存前所有数据变动的长度 + 1
     server.dirty++;
+    //设置过期时间
     if (expire) setExpire(c,c->db,key,mstime()+milliseconds);
     notifyKeyspaceEvent(NOTIFY_STRING,"set",key,c->db->id);
     if (expire) notifyKeyspaceEvent(NOTIFY_GENERIC,
@@ -93,7 +105,15 @@ void setGenericCommand(client *c, int flags, robj *key, robj *val, robj *expire,
     addReply(c, ok_reply ? ok_reply : shared.ok);
 }
 
-/* SET key value [NX] [XX] [KEEPTTL] [EX <seconds>] [PX <milliseconds>] */
+/** SET key value [NX] [XX] [KEEPTTL] [EX <seconds>] [PX <milliseconds>] 
+ *
+ * [NX] 只有当 键 不存在时才设置关联新的字符串值
+ * [XX] 只有当 键 存在时才设置关联新的字符串值
+ * [KEEPTTL] 保留与key关联的生存时间。
+ * [EX <seconds>] 设置指定的过期时间，单位是 秒
+ * [PX <milliseconds>] 设置指定的过期时间，单位是 毫秒
+ * 上述参数按顺序优先级，只会生效一个
+ */
 void setCommand(client *c) {
     int j;
     robj *expire = NULL;
@@ -137,6 +157,7 @@ void setCommand(client *c) {
             expire = next;
             j++;
         } else {
+            //回复语法错误
             addReply(c,shared.syntaxerr);
             return;
         }
